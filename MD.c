@@ -8,6 +8,7 @@
 #include <math.h>
 #include <omp.h>
 #include <time.h>
+#include <string.h>
 #define NUM_THREADS 16
 void plot_particles(Particle *particleList,FILE *fp){
 
@@ -24,7 +25,6 @@ int main(){
 
     Particle *particleList = malloc(sizeof(Particle)*NUM_PARTICLES_UNIVERSE);
     Acceleration *accelerationCache = malloc(sizeof(Acceleration)*NUM_PARTICLES_UNIVERSE);
-    init_AccelerationCache(accelerationCache);
     init_ParticleList(particleList);
 
     FILE *fpBefore = fopen("Before.dat","w");
@@ -47,6 +47,9 @@ int main(){
     }
 
     for(int i=0;i<NUM_TIMESTEP;i++) {
+
+        init_AccelerationCache(accelerationCache);
+
         #pragma omp parallel for num_threads(NUM_THREADS)
         for (int ref = 0; ref < NUM_PARTICLES_UNIVERSE; ref++) {
             for (int neighbor = 0; neighbor < NUM_PARTICLES_UNIVERSE; neighbor++) {
