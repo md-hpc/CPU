@@ -1,0 +1,11 @@
+rm -rf records
+gcc md.c -o md -lm -lpthread -g
+if [ $? -ne 0 ]; then
+    exit 1
+fi
+./md $@
+if [ $? -ne 0 ]; then
+    exit 1
+fi
+
+python viz.py
