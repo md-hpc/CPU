@@ -53,7 +53,7 @@ int main(){
         #pragma omp parallel for num_threads(NUM_THREADS)
         for (int ref = 0; ref < NUM_PARTICLES_UNIVERSE; ref++) {
             for (int neighbor = 0; neighbor < NUM_PARTICLES_UNIVERSE; neighbor++) {
-                if (particleList[ref].particleId == particleList[neighbor].particleId) {
+                if (ref==neighbor) {
                     continue;
                 } else {
                     Acceleration curr = LJ_3D(&particleList[ref], &particleList[neighbor]);
