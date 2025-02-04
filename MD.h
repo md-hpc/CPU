@@ -14,6 +14,7 @@
 #define CUTOFF (SIGMA * 2.5)
 #define TIMESTEP (1*pow(10,-7))
 #define SEED 246
+#define DT 0.1
 
 #include <math.h>
 #include <time.h>
@@ -228,9 +229,9 @@ static inline float lj(float r){
 } 
 
 static inline void scalar_mul(Particle *v,float c){
-    v->x*=c;
-    v->y*=c;
-    v->z*=c;
+    v->vX*=c;
+    v->vY*=c;
+    v->vY*=c;
 }
 
 static inline void vec_add(Particle *a, Particle *b){
