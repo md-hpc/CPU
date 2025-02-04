@@ -312,7 +312,7 @@ static inline long position_to_cell(vector_t *r) {
     return linear_idx(i, j, k);
 }
 
-static inline float subm(float a, float b) {
+static inline float  subm(float a, float b) {
     float c, d;
     c = b - a;
     if (c > 0) {

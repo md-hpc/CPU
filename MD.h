@@ -182,8 +182,61 @@ float velocityCheck(float velocity){
     }
 }
 float calculate_Velocity(float a2);
+static inline float subm(float a,float b){
+    float c,d;
+    c = b-a;
+    if(c>0){
+        d=b-L-a;
+        if(c<-d){
+            return c;
+        }
+        else{
+            return d;
+        }
+    }
+    else{
+        d=b+L-a;
+        if(-c<d){
+            return c;
+        }
+        else{
+            return d;
+        }
+    }
+}
 
+static inline float modr(Particle *c, Particle *a,Particle *b){
+    c->x=subm(a->x,b->x);
+    c->y=subm(a->y,b->y);
+    c->z=subm(a->z,b->z);
+}
 
+static inline float norm(Particle *r){
+    return sqrt(powf(r->x,2)+powf(r->y,2)+powf(r->z,2));
+}
 
+static inline float lj(float r){
+    float f=4*EPSILON*(6*powf(SIGMA,6)/powf(r,7)-12*powf(SIGMA,12)/powf(r,13));
+
+    if(f<LJ_MIN){
+        return LJ_MIN;
+    }
+    else{
+        return f;
+    }
+
+} 
+
+static inline void scalar_mul(Particle *v,float c){
+    v->x*=c;
+    v->y*=c;
+    v->z*=c;
+}
+
+static inline void vec_add(Particle *a, Particle *b){
+    a->x+=b->x;
+    a->y+=b->y;
+    a->z+=b->z;
+}
 
 #endif //CPU_MD_H
