@@ -5,16 +5,16 @@
 #ifndef CPU_MD_H
 #define CPU_MD_H
 
-#define NUM_TIMESTEP 2000000
 #define EPSILON 40
 #define SIGMA 1
-#define NUM_PARTICLES_UNIVERSE 2
 #define UNIVERSE_SIZE  10
 #define L (CUTOFF * UNIVERSE_SIZE)
 #define CUTOFF (SIGMA * 2.5)
 #define TIMESTEP (1*pow(10,-7))
 #define SEED 246
 #define DT 0.1
+#define LJ_MIN (-4*24*EPSILON/SIGMA*(powf(7./26.,7./6.)-2*powf(7./26.,13./6.)))
+
 
 #include <math.h>
 #include <time.h>
@@ -39,32 +39,8 @@ typedef struct{
     float vX,vY,vZ;
     int particleId;
 }Velocity;
-void init_ParticleList(Particle *particleList){
-    srand(SEED);
-    int min = -10;
-    int max = 10;
-
-
-    for(int i=0; i<NUM_PARTICLES_UNIVERSE;i++) {
-        particleList[i].x = ((float) rand() / (float) (RAND_MAX)) * UNIVERSE_SIZE;
-        particleList[i].y = ((float) rand() / (float) (RAND_MAX)) * UNIVERSE_SIZE;
-        particleList[i].z = ((float) rand() / (float) (RAND_MAX)) * UNIVERSE_SIZE;
-
-        particleList[i].vX = ((float)(min + rand() % (max - min + 1))/(float)max) * UNIVERSE_SIZE / 2;
-        particleList[i].vY = ((float)(min + rand() % (max - min + 1))/(float)max) * UNIVERSE_SIZE / 2;
-        particleList[i].vZ = ((float)(min + rand() % (max - min + 1))/(float)max) * UNIVERSE_SIZE / 2;
-
-        particleList[i].particleId = i;
-    }
-}
-void init_AccelerationCache(Acceleration *accelerationCache){
-    for(int i=0;i<NUM_PARTICLES_UNIVERSE;i++){
-        accelerationCache[i].particleId = i;
-        accelerationCache[i].aX = 0;
-        accelerationCache[i].aY = 0;
-        accelerationCache[i].aZ = 0;
-    }
-}
+void init_ParticleList(Particle *particleList);
+void init_AccelerationCache(Acceleration *accelerationCache);
 
 /*
 float distance(float a, float b){
@@ -108,32 +84,6 @@ void normalize(float *distance3D){
 
 }
 */
-void update_ParticleList(Particle particleList[NUM_PARTICLES_UNIVERSE]);
-
-#define LJ_MIN (-4*24*EPSILON/SIGMA*(pow(7./26.,7./6.)-2*pow(7./26.,13./6.)))
-
-float LJ_1D(float  ref, float  neighbor){
-    float r = fabsf(ref - neighbor);
-    float LJ = 4*EPSILON*(6*pow(SIGMA,6)/pow(r,7) - 12*pow(SIGMA,12)/pow(r,13));
-
-    if(r == 0) {
-        return 0;
-    }
-    if(LJ < LJ_MIN){
-        LJ = LJ_MIN;
-    }
-
-    return LJ;
-
-}
-Acceleration LJ_3D(Particle *ref,Particle *neighbor){
-    float aX = LJ_1D(ref->x,neighbor->x);
-    float aY = LJ_1D(ref->y,neighbor->y);
-    float aZ = LJ_1D(ref->z,neighbor->z);
-
-    Acceleration output = {aX,aY,aZ,ref->particleId};
-    return output;
-}
 float dummy_LJ_1D(float  ref, float  neighbor){
     float r = ref - neighbor;
 
@@ -206,7 +156,7 @@ static inline float subm(float a,float b){
     }
 }
 
-static inline float modr(Particle *c, Particle *a,Particle *b){
+static inline void modr(Particle *c, Particle *a,Particle *b){
     c->x=subm(a->x,b->x);
     c->y=subm(a->y,b->y);
     c->z=subm(a->z,b->z);

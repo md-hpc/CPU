@@ -9,6 +9,8 @@
 #include <omp.h>
 #include <time.h>
 #include <string.h>
+#define NUM_PARTICLES_UNIVERSE 2
+#define NUM_TIMESTEP 2000000
 #define NUM_THREADS 16
 #define BSIZE 2
 #define BLOCKED 1
@@ -29,7 +31,7 @@ int main()
     start = omp_get_wtime();
 
     Particle *particleList = malloc(sizeof(Particle) * NUM_PARTICLES_UNIVERSE);
-    Acceleration *accelerationCache = malloc(sizeof(Acceleration) * NUM_PARTICLES_UNIVERSE);
+    //Acceleration *accelerationCache = malloc(sizeof(Acceleration) * NUM_PARTICLES_UNIVERSE);
     init_ParticleList(particleList);
     Particle vec, current;
     float r, f;
@@ -58,7 +60,7 @@ int main()
     for (int i = 0; i < NUM_TIMESTEP; i++)
     {
 
-        init_AccelerationCache(accelerationCache);
+        //init_AccelerationCache(accelerationCache);
 
         if (BLOCKED)
         {
@@ -71,7 +73,7 @@ int main()
                     {
                         for (int neighbor = jj; neighbor < jj + BSIZE; neighbor++)
                         {
-                            if (ref = neighbor)
+                            if (ref == neighbor)
                             {
                                 continue;
                             }
@@ -184,3 +186,31 @@ int main()
     printf("Time Taken: %f seconds\n", cpu_time);
     return 0;
 }
+void init_ParticleList(Particle *particleList){
+    srand(SEED);
+    int min = -10;
+    int max = 10;
+
+
+    for(int i=0; i<NUM_PARTICLES_UNIVERSE;i++) {
+        particleList[i].x = ((float) rand() / (float) (RAND_MAX)) * UNIVERSE_SIZE;
+        particleList[i].y = ((float) rand() / (float) (RAND_MAX)) * UNIVERSE_SIZE;
+        particleList[i].z = ((float) rand() / (float) (RAND_MAX)) * UNIVERSE_SIZE;
+
+        particleList[i].vX = ((float)(min + rand() % (max - min + 1))/(float)max) * UNIVERSE_SIZE / 2;
+        particleList[i].vY = ((float)(min + rand() % (max - min + 1))/(float)max) * UNIVERSE_SIZE / 2;
+        particleList[i].vZ = ((float)(min + rand() % (max - min + 1))/(float)max) * UNIVERSE_SIZE / 2;
+
+        particleList[i].particleId = i;
+    }
+}
+/*
+void init_AccelerationCache(Acceleration *accelerationCache){
+    for(int i=0;i<NUM_PARTICLES_UNIVERSE;i++){
+        accelerationCache[i].particleId = i;
+        accelerationCache[i].aX = 0;
+        accelerationCache[i].aY = 0;
+        accelerationCache[i].aZ = 0;
+    }
+}
+*/
