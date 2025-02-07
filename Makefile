@@ -11,9 +11,9 @@ OBJS:= $(SRC:.c=.o)
 all: MD
 
 MD: $(OBJS)
-	gcc -fopenmp $(LFLAGS) $(OBJS) -o $@ -lm
+	gcc -O1 -fopenmp $(LFLAGS) $(OBJS) -o $@ -lm 
 %.o: %.c
-	gcc -fopenmp $(CFLAGS) -c $< -o $@ -I.
+	gcc -O1 -fopenmp $(CFLAGS) -c $< -o $@ -I.
 
 clean:
 	$(RM) -f *.o MD
