@@ -1,18 +1,23 @@
+#include <vector>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include "common.h"
+#include <unistd.h>
+
+using namespace std;
 
 float SIGMA = 1;
 float EPSILON = 1;
 float CUTOFF = 2.5;
-int UNIVERSE_SIZE = 30;
-int N_PARTICLE = 2160000;
+int UNIVERSE_SIZE = 5;
+int N_PARTICLE = 10000;
 int N_TIMESTEP = 100;
 float DT = 0.1;
 int SEED = 0;
 int RESOLUTION = 100;
+int NEIGHBOR_REFRESH_RATE = 10;
 
 
 vec::vec(float x, float y, float z) : x(x), y(y), z(z) {};
@@ -42,7 +47,7 @@ vec &vec::operator+=(const float c) {
     return *this;
 }
 
-vec &vec::operator+=(const vec& other) {
+vec &vec::operator+=(const vec &other) {
     x += other.x;
     y += other.y;
     z += other.z;
@@ -58,6 +63,28 @@ vec &vec::operator=(const vec& other) {
     return *this;
 }
 
+vec vec::operator%(const vec &other) {
+    return vec(
+        subm(other.x, x),
+        subm(other.y, y),
+        subm(other.z, z)
+    );
+}
+
+void vec::apbc() {
+    x = fmodf(x,L);
+    y = fmodf(y,L);
+    z = fmodf(z,L);
+}
+
+int vec::cell() {
+    return linear_idx(
+        (int)x/CUTOFF,
+        (int)y/CUTOFF,
+        (int)z/CUTOFF
+    );
+}
+
 float vec::norm() {
     return sqrt(x*x+y*y+z*z);
 }
@@ -68,45 +95,20 @@ void vec::read(float *buf) {
     buf[2] = z;
 }
 
-mod_vec::mod_vec(float x, float y, float z) : x(x), y(y), z(z) {
-    normalize();
-};
-
-mod_vec mod_vec::operator+(const vec& other) {
-    return mod_vec(x + other.x, y + other.y, z + other.z);
+void vec::print() {
+    printf("%.3f %.3f %.3f\n",x,y,z);
 }
 
-mod_vec &mod_vec::operator+=(const vec &other) {
-    x += other.x;
-    y += other.y;
-    z += other.z;
-    normalize();
-
-    return *this;
+char *vec::str() {
+    sprintf(strbuf,"(%.3f %.3f %.3f)",x,y,z);
+    return strbuf;
 }
 
-int mod_vec::cell() {
-    int i,j,k;
 
-    i = ((int)floorf(x/CUTOFF))%UNIVERSE_SIZE;
-    j = ((int)floorf(y/CUTOFF))%UNIVERSE_SIZE;
-    k = ((int)floorf(z/CUTOFF))%UNIVERSE_SIZE;
-    
-    return i + j * UNIVERSE_SIZE + k * UNIVERSE_SIZE * UNIVERSE_SIZE; 
+particle::particle() : r(vec(0,0,0)), v(vec(0,0,0)) {}
+particle::particle(vec r) : r(r), v(vec(0,0,0)) {
+    id = count++;
 }
-
-mod_vec mod_vec::modr(mod_vec& other) {
-    return mod_vec(subm(x,other.x),subm(y,other.y),subm(z,other.z));
-}
-
-void mod_vec::normalize() {
-    x = fmodf(x,L);
-    y = fmodf(y,L);
-    z = fmodf(z,L);
-}
-
-particle::particle() : r(mod_vec(0,0,0)), v(vec(0,0,0)) {}
-particle::particle(mod_vec r) : r(r), v(vec(0,0,0)) {}
 
 int particle::cell() {
     return r.cell();
@@ -126,23 +128,21 @@ void cubic_idx(int *res, int idx) {
 }
 
 float subm(float a, float b) {
-    float c, d;
-    c = b - a;
-    if (c > 0) {
-        d = b - L - a;
-        if (c < -d) {
-            return c;
-        } else {
-            return d;
-        } 
-    } else {
-        d = b + L - a;
-        if (-c < d) {
-            return c;
-        } else {
-            return d;
-        }
-    }
+    // distance from a to b under periodic boundary condition of length L
+    float opts[3] = {
+        b - (a - L),
+        b - a,
+        b - (a + L)
+    };
+    float ds[3] = {
+        abs(opts[0]),
+        abs(opts[1]),
+        abs(opts[2])
+    };
+    int mi = 0;
+    mi = ds[mi] > ds[1] ? 1 : mi;
+    mi = ds[mi] > ds[2] ? 2 : mi;
+    return opts[mi];
 }
 
 float lj(float r) {
@@ -201,4 +201,41 @@ int parse_cli(int argc, char **argv) {
     }
 
     return 0;
+}
+
+void init_particles(vector<particle> &particles) {
+    srandom(SEED);
+    for (int i = 0; i < N_PARTICLE; i++) {
+        particles.push_back(particle(vec(L*frand(),L*frand(),L*frand())));
+    }
+}
+
+void save(vector<vector<particle>> &cells, int fd) {
+    int ci;
+    int pi;
+    int np;
+
+    float buf[3];
+
+    vector<particle> *cell;
+    for (ci = 0; ci < N_CELL; ci++) {
+        cell = &cells[ci];
+        np = cell->size();
+        for (pi = 0; pi < np; pi++) {
+            (*cell)[pi].r.read(buf);
+            write(fd,buf,3*sizeof(float));
+        }
+    }
+}
+
+void save(vector<particle> &particles, int fd) {
+    int pi;
+    int np;
+    float buf[3];
+
+    np = particles.size();
+    for (pi = 0; pi < np; pi++) {
+        particles[pi].r.read(buf);
+        write(fd,buf,3*sizeof(float));
+    }
 }

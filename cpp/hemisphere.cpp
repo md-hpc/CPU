@@ -36,9 +36,11 @@ int main(int argc, char **argv) {
 
     int dirfd, fd;
 
+    long interactions;
+
     float r, f, buf[3];
 
-    vec v, v_r;
+    vec v;
 
     int cur;
 
@@ -49,7 +51,7 @@ int main(int argc, char **argv) {
 
     srandom(SEED); 
     for (int i = 0; i < N_PARTICLE; i++) {
-        p_ = particle(mod_vec(L*frand(),L*frand(),L*frand()));
+        p_ = particle(vec(L*frand(),L*frand(),L*frand()));
         cells[p_.cell()].push_back(p_);
     }
 
@@ -62,7 +64,7 @@ int main(int argc, char **argv) {
     write(fd, hdr, sizeof(int) * 2);
 
     for (int t = 0; t < N_TIMESTEP; t++) {
-        printf("Timestep %d\n",t);             
+        printf("Timestep %d, %ld\n",t, interactions);
         for (int hidx = 0; hidx < N_CELL; hidx++) {
             hc = &cells[hidx];
 
@@ -87,18 +89,19 @@ int main(int argc, char **argv) {
                                 if (pr->r.x > pn->r.x)
                                     continue;
 
-                                v_r = pr->r.modr(pn->r);            
-                                r = v_r.norm();
+                                v = pn->r % pr->r;         
+                                r = v.norm();
 
                                 if (r > CUTOFF || r == 0) {
                                    continue;
                                 }
+                                interactions++;
+
                                 f = lj(r);
-                                v_r *= DT*f/r;
-                                
-                                pr->v += v_r;
-                                v_r *= -1.;
-                                pn->v += v_r;
+                                v *= DT*f/r;                       
+                                pr->v += v;
+                                v *= -1.;
+                                pn->v += v;
                             }
                         }
                     }
@@ -119,7 +122,8 @@ int main(int argc, char **argv) {
             
             for (p = &(*hc)[0], np = hc->size(); p < &(*hc)[np]; p++) {
                 p->r += p->v * DT;
-                
+                p->r.apbc();
+
                 cidx = p->cell();
                 if (cidx == hidx) {
                     (*hc)[cur++] = *p;

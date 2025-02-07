@@ -17,8 +17,13 @@ using namespace std;
 char default_path[] = "particles";
 char *path = default_path;
 
-vector<vector<particle>> cells;
+
+// holds particles that have exceeded the bounds of their cells, but have yet to be migrated to their new cell
+// we'll need this for thread-safety as there cannot be multiple writers to an std::vector
 vector<vector<particle>> outbounds;
+vector<vector<particle>> cells;
+vector<particle> particles;
+
 
 int main(int argc, char **argv) {
     char **arg;
@@ -28,8 +33,8 @@ int main(int argc, char **argv) {
 
     int i, j, k, n;
     int di, dj, dk;
-    int cidx, pidx, nidx;
-    int ccidx[3];
+    int ci, pi, nci;
+    int cci[3];
 
     int dirfd, fd;
 
@@ -46,11 +51,12 @@ int main(int argc, char **argv) {
     cells.resize(N_CELL);
     outbounds.resize(N_CELL); 
 
-    srandom(SEED);    
+    init_particles(particles);
     for (int i = 0; i < N_PARTICLE; i++) {
-        p_ = particle(mod_vec(L*frand(),L*frand(),L*frand()));
-        cells[p_.cell()].push_back(p_);
+        p = &particles[i];
+        cells[p->cell()].push_back(*p);
     }
+    particles.resize(0);
 
     fd = open(path,O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     if (fd == -1) {
@@ -62,86 +68,96 @@ int main(int argc, char **argv) {
 
     for (int t = 0; t < N_TIMESTEP; t++) {
         printf("Timestep %d\n",t);        
-        // velocity update
-    
         
-        for (int hidx = 0; hidx < N_CELL; hidx++) {
-            hc = &cells[hidx];
+        for (int hci = 0; hci < N_CELL; hci++) {
+            hc = &cells[hci];
 
-            cubic_idx(ccidx, hidx);
-            i = ccidx[0];
-            j = ccidx[1];
-            k = ccidx[2];
+            cubic_idx(cci, hci);
+            i = cci[0];
+            j = cci[1];
+            k = cci[2];
 
             for (int di = -1; di <= 1; di++) {
                 for (int dj = -1; dj <= 1; dj++) {
                     for (int dk = -1; dk <= 1; dk++) {
-                        nidx = linear_idx(i+di, j+dj, k+dk);
-                        nc = &cells[nidx];
+                        nci = linear_idx(i+di, j+dj, k+dk);
+                        nc = &cells[nci];
                         
                         particle *pr, *pn;
-                        int nr, nn; 
-                        for (pr = &(*hc)[0], nr = hc->size(); pr < &(*hc)[nr]; pr++) {
-                            for (pn = &(*nc)[0], nn = nc->size(); pn < &(*nc)[nn]; pn++) {
-                                v_r = pr->r.modr(pn->r);            
-                                r = v_r.norm();
+                        int ri, ni;
+                        int nr = hc->size(), nn = nc->size(); 
+                        for (ri = 0; ri < nr; ri++) {
+                            pr = &(*hc)[ri];
+                            for (ni = 0; ni < nn; ni++) {
+                                pn = &(*nc)[ni];
 
-                                if (r > CUTOFF || r == 0) {
+                                if (hci == nci && ri == ni)
+                                    continue;
+                                
+                                v = pn->r % pr->r;            
+                                r = v.norm();
+
+                                if (r > CUTOFF) {
                                    continue;
                                 }
                                 f = lj(r);
-                                v_r *= DT*f/r;
+                                v *= f / r * DT;
                                 
-                                pr->v += v_r;
+                                pr->v += v;
                             }
                         }
                     }
                 }
             }
         }
-        
+
+       
         // position update
         for (int i = 0; i < outbounds.size(); i++) {
             outbounds[i].resize(0);
         }
         
-        int hidx, nc, np;
+        int hci, nc, np;
         vector<particle> *hc;
         particle *p;
-        for (hidx = 0, nc = cells.size(), hc = &cells[hidx]; hidx < nc; hc = &cells[++hidx]) {
+        for (ci = 0; ci < N_CELL; ci++) {
+            cell = &cells[ci];
             cur = 0;
-            
-            for (p = &(*hc)[0], np = hc->size(); p < &(*hc)[np]; p++) {
+            np = cell->size();
+            for (pi = 0; pi < np; pi++) {
+                p = &(*cell)[pi];
                 p->r += p->v * DT;
                 
-                cidx = p->cell();
-                if (cidx == hidx) {
-                    (*hc)[cur++] = *p;
+                hci = p->cell();
+                if (hci == ci) {
+                    (*cell)[cur++] = *p;
                 } else {
-                    outbounds[hidx].push_back(*p);
+                    outbounds[ci].push_back(*p);
                 }
             }
-            hc->resize(cur);
+            cell->resize(cur);
         }
         
         // particle migration
-        for (int hidx = 0; hidx < N_CELL; hidx++) {
-            hc = &cells[hidx];
-            cubic_idx(ccidx, hidx);
-            i = ccidx[0];
-            j = ccidx[1];
-            k = ccidx[2];
+        for (int hci = 0; hci < N_CELL; hci++) {
+            cell = &cells[hci];
+            cubic_idx(cci, hci);
+            i = cci[0];
+            j = cci[1];
+            k = cci[2];
 
             for (int di = -1; di <= 1; di++) {
                 for (int dj = -1; dj <= 1; dj++) {
                     for (int dk = -1; dk <= 1; dk++) {
-                        nidx = linear_idx(i+di, j+dj, k+dk);
-                        outbound = &outbounds[nidx];
+                        nci = linear_idx(i+di, j+dj, k+dk);
+                        outbound = &outbounds[nci];
                         
+                        int pi;
                         particle *p;
-                        int np;
-                        for (p = &(*outbound)[0], np = outbound->size(); p < &(*outbound)[np]; p++) {
-                            if (p->cell() == hidx) {
+                        int np = outbound->size();
+                        for (pi = 0; pi < np; pi++) {
+                            p = &(*outbound)[pi];
+                            if (p->cell() == hci) {
                                 hc->push_back(*p);
                             }
                         }
@@ -151,15 +167,8 @@ int main(int argc, char **argv) {
         }
 
         // save results
-
         if (t % RESOLUTION == 0) {
-            sprintf(path,"%d",t);
-            for (vector<vector<particle>>::iterator cell = cells.begin(); cell != cells.end(); ++cell) {
-                for (vector<particle>::iterator p = cell->begin(); p != cell->end(); ++p) {
-                    p->r.read(buf);
-                    write(fd,buf,3*sizeof(float));
-                }
-            }
+            save(cells, fd);
         }
     }
 

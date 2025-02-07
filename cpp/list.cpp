@@ -18,38 +18,43 @@ char default_path[] = "hemisphere-particles";
 
 char *path = default_path;
 
-vector<vector<particle*>> neighbors;
+
+
+vector<vector<vector<particle*>>> neighbors;
 vector<vector<particle>> cells;
-vector<vector<particle>> outbounds;
+
+vector<particle> particles;
 
 
 int main(int argc, char **argv) {
     char **arg;
-    particle *p, p_;
-    vector<particle> *hc, *nc, *cell;
-    vector<particle> *outbound;
+    particle *p, p_, *pr, *pn;
+
+    vector<vector<particle*>> *cell_neighbors;
+    vector<particle*> *neighbor_list;
+    vector<particle> *cell, *nc, *hc;
 
     int i, j, k, n;
     int di, dj, dk;
-    int cidx, pidx, nidx;
+    int hci, nci, ci;
+    int pi, ni, ri;
+    int nr, nn, np;
     int ccidx[3];
 
     int dirfd, fd;
 
     float r, f, buf[3];
 
-    vec v, v_r;
-
-    int cur;
+    vec v;
 
     parse_cli(argc, argv);
 
     cells.resize(N_CELL);
-    outbounds.resize(N_CELL); 
+    neighbors.resize(N_CELL);
 
     srandom(SEED); 
     for (int i = 0; i < N_PARTICLE; i++) {
-        p_ = particle(mod_vec(L*frand(),L*frand(),L*frand()));
+        p_ = particle(vec(L*frand(),L*frand(),L*frand()));
         cells[p_.cell()].push_back(p_);
     }
 
@@ -65,101 +70,100 @@ int main(int argc, char **argv) {
         printf("Timestep %d\n",t);        
         // velocity update
         if (t % NEIGHBOR_REFRESH_RATE == 0) {
-             
-            for (int hidx = 0; hidx < N_CELL; hidx++) {
-                hc = &cells[hidx];
+            // collect particles into one big list
+            int cidx;
 
-                cubic_idx(ccidx, hidx);
+            for (cidx = 0; cidx < N_CELL; cidx++) {
+                vector<particle> *cell = &cells[cidx];
+                int np = cell->size();
+                for (int pidx = 0; pidx < np; pidx++) {
+                    particles.push_back((*cell)[pidx]);
+                }
+                cell->resize(0);
+            }
+
+            // bin particles into cells
+            for (int pidx = 0; pidx < N_PARTICLE; pidx++) {
+                cidx = particles[pidx].cell();
+                cells[cidx].push_back(particles[pidx]);
+            }
+            
+            // resize 2D neighbor lists
+            for (int cidx = 0; cidx < N_CELL; cidx++) {
+                neighbors[cidx].resize(cells[cidx].size());
+            }
+
+            // construct neighbor lists
+            for (int hci = 0; hci < N_CELL; hci++) {
+                hc = &cells[hci];
+                cubic_idx(ccidx, hci);
                 i = ccidx[0];
                 j = ccidx[1];
                 k = ccidx[2];
-
+                
                 for (int di = -1; di <= 1; di++) {
                     for (int dj = -1; dj <= 1; dj++) {
                         for (int dk = -1; dk <= 1; dk++) {
                             if (di < 0 || di == 0 && dj < 0 || di < 0 && dj < 0 && dk < 0) {
                                 continue;
                             }
-                            nidx = linear_idx(i+di, j+dj, k+dk);
-                            nc = &cells[nidx];
+                            nci = linear_idx(i+di, j+dj, k+dk);
+                            nc = &cells[nci];
                             
                             particle *pr, *pn;
+                            int ri, ni;
                             int nr, nn; 
-                            for (pr = &(*hc)[0], nr = hc->size(); pr < &(*hc)[nr]; pr++) {
-                                for (pn = &(*nc)[0], nn = nc->size(); pn < &(*nc)[nn]; pn++) {
-                                    if (pr->r.x > pn->r.x)
+                            for (ri = 0, nr = hc->size(); ri < nr; ri++) {
+                                pr = &cells[hci][ri];
+                                for (ni = 0, nn = nc->size(); ni < nn; ni++) {
+                                    pn = &cells[hci][ni];
+                                    if (pr->r.x < pn->r.x)
                                         continue;
 
-                                    v_r = pr->r.modr(pn->r);            
-                                    r = v_r.norm();
-
-                                    if (r > CUTOFF || r == 0) {
-                                       continue;
+                                    r = (pn->r % pr->r).norm();
+                                    if (r < CUTOFF && r > 0) {
+                                        neighbors[hci][ri].push_back(pn);   
                                     }
-                                    f = lj(r);
-                                    v_r *= DT*f/r;
-                                    
-                                    pr->v += v_r;
-                                    v_r *= -1.;
-                                    pn->v += v_r;
                                 }
                             }
                         }
                     }
                 }
             }
-        
-        // position update
-        for (int i = 0; i < outbounds.size(); i++) {
-            outbounds[i].resize(0);
+        }
+
+        // velocity update
+        for (ci = 0; ci < N_CELL; ci++) {
+            cell = &cells[ci];
+            cell_neighbors = &neighbors[ci];
+            nr = cell_neighbors->size();
+            for (ri = 0; ri < nr; ri++) { 
+                pr = &cells[ci][ri];
+
+                neighbor_list = &(*cell_neighbors)[ri];
+                nn = neighbor_list->size();
+                for (ni = 0; ni < nn; ni++) {
+                    pn = (*neighbor_list)[ni];
+                    
+                    v = pn->r % pr->r;
+                    r = v.norm();
+                    f = lj(r);
+                    v *= f / r * DT;
+                    pr->v += v;
+                }
+            }
         }
         
-        int hidx, nc, np;
-        vector<particle> *hc;
-        particle *p;
-        for (hidx = 0, nc = cells.size(), hc = &cells[hidx]; hidx < nc; hc = &cells[++hidx]) {
-            cur = 0;
-            
-            for (p = &(*hc)[0], np = hc->size(); p < &(*hc)[np]; p++) {
+        // position update       
+        for (ci = 0; ci < N_CELL; ci++) {
+            cell = &cells[ci];
+            np = cell->size();
+            for (pi = 0; pi < np; pi++) {
+                p = &cells[ci][pi];
                 p->r += p->v * DT;
-                
-                cidx = p->cell();
-                if (cidx == hidx) {
-                    (*hc)[cur++] = *p;
-                } else {
-                    outbounds[hidx].push_back(*p);
-                }
-            }
-            hc->resize(cur);
-        }
-        
-        // particle migration
-        for (int hidx = 0; hidx < N_CELL; hidx++) {
-            hc = &cells[hidx];
-            cubic_idx(ccidx, hidx);
-            i = ccidx[0];
-            j = ccidx[1];
-            k = ccidx[2];
-
-            for (int di = -1; di <= 1; di++) {
-                for (int dj = -1; dj <= 1; dj++) {
-                    for (int dk = -1; dk <= 1; dk++) {
-                        nidx = linear_idx(i+di, j+dj, k+dk);
-                        outbound = &outbounds[nidx];
-                        
-                        particle *p;
-                        int np;
-                        for (p = &(*outbound)[0], np = outbound->size(); p < &(*outbound)[np]; p++) {
-                            if (p->cell() == hidx) {
-                                hc->push_back(*p);
-                            }
-                        }
-                    }
-                }
+                p->r.apbc();
             }
         }
-
-        // save results
 
         if (t % RESOLUTION == 0) {
             sprintf(path,"%d",t);

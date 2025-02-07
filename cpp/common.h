@@ -1,3 +1,4 @@
+#include <vector>
 #include <cmath>
 using namespace std;
  
@@ -11,6 +12,7 @@ extern float DT;
 extern int SEED;
 extern char *path;
 extern int RESOLUTION;
+extern int NEIGHBOR_REFRESH_RATE;
 
 #define N_CELL (UNIVERSE_SIZE*UNIVERSE_SIZE*UNIVERSE_SIZE)
 #define L (CUTOFF * UNIVERSE_SIZE)
@@ -19,14 +21,6 @@ extern int RESOLUTION;
 
 #define DIR_MODE (S_IRWXU|S_IRWXG|S_IROTH)
 #define FILE_MODE (S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH)
-
-int linear_idx(int, int, int);
-void cubic_idx(int *, int);
-float subm(float, float);
-float lj(float);
-float frand(void);
-void thread(void (*)(long), long);
-int parse_cli(int, char **);
 
 class vec {
 public:
@@ -39,43 +33,52 @@ public:
 
     vec operator+(const vec &other);
     vec operator*(const float c);
-
+    vec operator%(const vec &other);
+    
     vec& operator*=(const float c);
     vec& operator+=(const float c);
     vec& operator+=(const vec &other);
 
     vec& operator=(const vec &other);
-    
+
+    void apbc();
+    int cell();
+
     float norm();
 
     void read(float *buf);
-};
-
-class mod_vec : public vec {
-public:
-    float x;
-    float y;
-    float z;
-
-    mod_vec(float x, float y, float z);
-    mod_vec &operator+=(const vec &other);
-    mod_vec operator+(const vec &other);
-    void add(const vec &other);
-    int cell();
-    mod_vec modr(mod_vec& other);
-
+    void sprint(char *buf);
+    void print();
+    char *str();
 private:
-    void normalize();
+    char strbuf[32];
+
 };
 
 class particle {
 public:
     particle();
-    particle(mod_vec r);
+    particle(vec r);
     
     int cell();
 
-    mod_vec r;
+    vec r;
     vec v;
-    int idx;
+    int id;
+
+private:
+    int count = 0;
 }; 
+
+int linear_idx(int, int, int);
+void cubic_idx(int *, int);
+float subm(float, float);
+float lj(float);
+float frand(void);
+void thread(void (*)(long), long);
+int parse_cli(int, char **);
+void init_particles(vector<particle> &);
+void save(vector<particle> &, int);
+void save(vector<vector<particle>> &, int);
+
+
