@@ -47,12 +47,14 @@ public:
     float norm();
 
     void read(float *buf);
+
+#ifdef DEBUG
     void sprint(char *buf);
     void print();
     char *str();
 private:
     char strbuf[32];
-
+#endif
 };
 
 class particle {
@@ -65,9 +67,7 @@ public:
     vec r;
     vec v;
     int id;
-
-private:
-    int count = 0;
+    static int counter;
 }; 
 
 int linear_idx(int, int, int);

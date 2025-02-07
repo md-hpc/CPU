@@ -5,12 +5,11 @@ bin = reference list cells hemisphere
 
 all: build
 
-debug_cxxflags: gxx += -g -DDEBUG
-
-debug: debug_cxxflags build
+debug: gxx += -g -DDEBUG
+debug: build
 
 clean:
-	-rm $(bin)
+	-rm $(bin) test
 
 build: $(bin)
 

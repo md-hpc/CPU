@@ -11,3 +11,4 @@ MD.o
 records
 *.csv
 *.ods
+*.out

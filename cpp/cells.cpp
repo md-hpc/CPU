@@ -67,7 +67,7 @@ int main(int argc, char **argv) {
     write(fd, hdr, sizeof(int) * 2);
 
     for (int t = 0; t < N_TIMESTEP; t++) {
-        printf("Timestep %d\n",t);        
+        dprintf(2,"Timestep %d\n",t);        
         
         for (int hci = 0; hci < N_CELL; hci++) {
             hc = &cells[hci];
@@ -100,6 +100,9 @@ int main(int argc, char **argv) {
                                 if (r > CUTOFF) {
                                    continue;
                                 }
+#ifdef DEBUG
+                                printf("%d %d %d\n",t, pr->id, pn->id);
+#endif
                                 f = lj(r);
                                 v *= f / r * DT;
                                 
@@ -140,7 +143,7 @@ int main(int argc, char **argv) {
         
         // particle migration
         for (int hci = 0; hci < N_CELL; hci++) {
-            cell = &cells[hci];
+            hc = &cells[hci];
             cubic_idx(cci, hci);
             i = cci[0];
             j = cci[1];

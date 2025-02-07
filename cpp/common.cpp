@@ -11,9 +11,9 @@ using namespace std;
 float SIGMA = 1;
 float EPSILON = 1;
 float CUTOFF = 2.5;
-int UNIVERSE_SIZE = 5;
-int N_PARTICLE = 10000;
-int N_TIMESTEP = 100;
+int UNIVERSE_SIZE = 3;
+int N_PARTICLE = 2160;
+int N_TIMESTEP = 10;
 float DT = 0.1;
 int SEED = 0;
 int RESOLUTION = 100;
@@ -95,6 +95,7 @@ void vec::read(float *buf) {
     buf[2] = z;
 }
 
+#ifdef DEBUG
 void vec::print() {
     printf("%.3f %.3f %.3f\n",x,y,z);
 }
@@ -103,11 +104,13 @@ char *vec::str() {
     sprintf(strbuf,"(%.3f %.3f %.3f)",x,y,z);
     return strbuf;
 }
+#endif
 
+int particle::counter = 0;
 
 particle::particle() : r(vec(0,0,0)), v(vec(0,0,0)) {}
 particle::particle(vec r) : r(r), v(vec(0,0,0)) {
-    id = count++;
+    id = counter++;
 }
 
 int particle::cell() {

@@ -50,7 +50,7 @@ int main(int argc, char **argv) {
     write(fd, hdr, sizeof(int) * 2);
 
     for (int t = 0; t < N_TIMESTEP; t++) {
-        printf("Timestep %d\n",t);
+        dprintf(2,"Timestep %d\n",t);
         // velocity update
         particle *pr, *pn;
         int ri, ni;

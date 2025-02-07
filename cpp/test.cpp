@@ -1,19 +1,29 @@
 #include <stdio.h>
 #include "common.h"
 
+class ticket { 
+public:
+    ticket() {
+        ID = counter++;
+    }
+
+    int id() {
+        return ID;
+    }
+
+private:
+    int ID;
+    static int counter;
+};
+
+
+int ticket::counter = 0;
+
 int main() {
-    CUTOFF = 1.;
-    UNIVERSE_SIZE = 3;
+    ticket a = ticket();
+    ticket b = ticket();
 
-    vec a = vec(.5,.5,.5);
-    vec i = vec(1,0,0);
-    vec j = vec(0,1,0);
-    vec k = vec(0,0,1);
+    printf("%d %d\n",a.id(), b.id());
 
-    vec b = a + i*2;
-
-    b.print();
-    vec c = a % b;
-    c.print();
-
+    return 0;
 }
