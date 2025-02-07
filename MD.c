@@ -98,7 +98,7 @@ void velocityUpdateBlocked(Particle *particleList)
 {
     Particle vec;
     float r, f;
-    //#pragma omp parallel for num_threads(NUM_THREADS)
+    #pragma omp parallel for num_threads(NUM_THREADS)
     for (int ii = 0; ii < NUM_PARTICLES_UNIVERSE; ii += BSIZE)
     {
         for (int jj = 0; jj < NUM_PARTICLES_UNIVERSE; jj += BSIZE)
