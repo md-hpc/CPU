@@ -8,16 +8,18 @@
 
 using namespace std;
 
-float SIGMA = 1;
-float EPSILON = 1;
-float CUTOFF = 2.5;
+float SIGMA = 1/2.5;
+float EPSILON = 1/2.5;
+float CUTOFF = 1;
 int UNIVERSE_SIZE = 3;
 int N_PARTICLE = 2160;
 int N_TIMESTEP = 10;
 float DT = 0.1;
 int SEED = 0;
 int RESOLUTION = 100;
-int NEIGHBOR_REFRESH_RATE = 10;
+int NEIGHBOR_REFRESH_RATE = 18;
+int BR = -1;
+int BN = -1;
 
 
 vec::vec(float x, float y, float z) : x(x), y(y), z(z) {};
@@ -178,6 +180,10 @@ void thread(void (*kernel)(int), long n) {
 }
 
 int parse_cli(int argc, char **argv) {    
+    for (int i = 0; i < argc; i++) {
+        dprintf(2,"%s ",argv[i]);
+    }
+    dprintf(2,"\n");
     for (char **arg = &argv[1]; arg < &argv[argc]; arg+=2) {
         if (!strcmp(arg[0],"--sigma")) {
             SIGMA = atof(arg[1]);
@@ -197,8 +203,12 @@ int parse_cli(int argc, char **argv) {
             SEED = atoi(arg[1]);
         } else if (!strcmp(arg[0],"--resolution")) {
             RESOLUTION = atoi(arg[1]);
+        } else if (!strcmp(arg[0],"--br")) {
+            BR = atoi(arg[1]);
+        } else if (!strcmp(arg[0],"--bn")) {
+            BN = atoi(arg[1]);
         } else {
-            dprintf(2,"Unrecognized option: %s\n", arg);
+            dprintf(2,"Unrecognized option: %s\n", arg[0]);
             return 1;
         }
     }

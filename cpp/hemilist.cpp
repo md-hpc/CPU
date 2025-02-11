@@ -127,8 +127,11 @@ int main(int argc, char **argv) {
                                         printf("%d %d\n",BR, BN);
                                     }
                                     #endif
-
-                                    r = (pn->r % pr->r).norm();
+                                    
+                                    v = (pn->r % pr->r);
+                                    if (v.x < 0)
+                                        continue;
+                                    r = v.norm();
                                     if (r < CUTOFF && r > 0) {
                                         neighbors[hci][ri].push_back(pn);   
                                     }
@@ -158,6 +161,7 @@ int main(int argc, char **argv) {
                         printf("%d %d\n", BR, BN);
                     }
                     printf("%d %d %d\n",t, pr->id, pn->id);
+                    printf("%d %d %d\n",t, pn->id, pr->id);
 #endif
 
                     v = pn->r % pr->r;
@@ -165,6 +169,8 @@ int main(int argc, char **argv) {
                     f = lj(r);
                     v *= f / r * DT;
                     pr->v += v;
+                    v *= -1;
+                    pn->v += v;
                 }
             }
         }

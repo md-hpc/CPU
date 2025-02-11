@@ -13,6 +13,8 @@ extern int SEED;
 extern char *path;
 extern int RESOLUTION;
 extern int NEIGHBOR_REFRESH_RATE;
+extern int BR;
+extern int BN;
 
 #define N_CELL (UNIVERSE_SIZE*UNIVERSE_SIZE*UNIVERSE_SIZE)
 #define L (CUTOFF * UNIVERSE_SIZE)

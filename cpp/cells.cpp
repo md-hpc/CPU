@@ -90,6 +90,12 @@ int main(int argc, char **argv) {
                             pr = &(*hc)[ri];
                             for (ni = 0; ni < nn; ni++) {
                                 pn = &(*nc)[ni];
+                               
+#ifdef DEBUG
+                                if (pr->id == BR && pn->id == BN) {
+                                    dprintf(2,"%d %d\n");
+                                }
+#endif
 
                                 if (hci == nci && ri == ni)
                                     continue;

@@ -62,6 +62,19 @@ int main(int argc, char **argv) {
                 if (ri == ni)
                     continue;
 
+#ifdef DEBUG
+                if (pr->id == BR && pn->id == BN) {
+                    printf("%d %d\n", BR, BN);    
+                }
+#endif
+
+
+                if (pr->id == BR && pn->id == BN) {
+                    printf("%d %d\n", BR, BN);    
+                }
+
+
+                
                 v = pn->r % pr->r;
 
                 r = v.norm();
