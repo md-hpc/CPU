@@ -1,7 +1,7 @@
 
 gxx = g++ -lm common.cpp
 common = common.cpp common.h
-bin = reference list cells hemisphere hemilist
+bin = reference list list-thread cells hemisphere hemilist
 
 all: stamp-all build
 

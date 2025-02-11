@@ -17,7 +17,8 @@ using namespace std;
 char default_path[] = "hemisphere-particles";
 
 char *path = default_path;
-
+char default_log[] = "verify/hemisphere.txt";
+char *LOG_PATH = default_log;
 
 vector<vector<particle>> cells;
 vector<vector<particle>> outbounds;

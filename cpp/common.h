@@ -15,6 +15,9 @@ extern int RESOLUTION;
 extern int NEIGHBOR_REFRESH_RATE;
 extern int BR;
 extern int BN;
+extern int THREADS;
+extern char *LOG_PATH;
+
 
 #define N_CELL (UNIVERSE_SIZE*UNIVERSE_SIZE*UNIVERSE_SIZE)
 #define L (CUTOFF * UNIVERSE_SIZE)

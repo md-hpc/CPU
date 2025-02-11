@@ -11,8 +11,8 @@ using namespace std;
 float SIGMA = 1/2.5;
 float EPSILON = 1/2.5;
 float CUTOFF = 1;
-int UNIVERSE_SIZE = 3;
-int N_PARTICLE = 2160;
+int UNIVERSE_SIZE = 5;
+int N_PARTICLE = 10000;
 int N_TIMESTEP = 10;
 float DT = 0.1;
 int SEED = 0;
@@ -20,7 +20,7 @@ int RESOLUTION = 100;
 int NEIGHBOR_REFRESH_RATE = 18;
 int BR = -1;
 int BN = -1;
-
+int THREADS = 128;
 
 vec::vec(float x, float y, float z) : x(x), y(y), z(z) {};
 vec::vec() : x(0), y(0), z(0) {};
@@ -165,17 +165,21 @@ float frand() {
 }
 
 
-void thread(void (*kernel)(int), long n) {
-    pthread_t tids[n];
+void thread(void (*kernel)(long), long n) {
+    pthread_t tids[THREADS];
     long i;
     void *ret;
+    int t, r;
+    
+    for (t = 0; t < n; t += THREADS) {
+        r = n - t < THREADS ? n - t : THREADS;
 
-    for (i = 0; i < n; i++) {
-        pthread_create(&tids[i], NULL, (void*(*)(void*)) kernel, (void *) i);
-    }
-
-    for (i = 0; i < n; i++) {
-        pthread_join(tids[i], &ret);
+        for (i = 0; i < r; i++) {
+            pthread_create(&tids[i], NULL, (void*(*)(void*)) kernel, (void *) i);
+        }
+        for (i = 0; i < r; i++) {
+            pthread_join(tids[i], &ret);
+        }
     }
 }
 
@@ -207,6 +211,10 @@ int parse_cli(int argc, char **argv) {
             BR = atoi(arg[1]);
         } else if (!strcmp(arg[0],"--bn")) {
             BN = atoi(arg[1]);
+        } else if (!strcmp(arg[0],"--threads")) {
+            THREADS = atoi(arg[1]);
+        } else if (!strcmp(arg[0],"--log-path")) {
+            LOG_PATH = arg[1];
         } else {
             dprintf(2,"Unrecognized option: %s\n", arg[0]);
             return 1;

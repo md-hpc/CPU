@@ -13,7 +13,9 @@
 using namespace std;
 
 char default_path[] = "particles";
+char default_log[] = "verify/particles.txt";
 char *path = default_path;
+char *LOG_PATH = default_log;
 
 // macros for determining import regions
 

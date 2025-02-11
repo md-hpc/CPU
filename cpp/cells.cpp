@@ -16,6 +16,8 @@ using namespace std;
 
 char default_path[] = "particles";
 char *path = default_path;
+char default_log[] = "verify/cells.cpp";
+char *LOG_PATH = default_log;
 
 
 // holds particles that have exceeded the bounds of their cells, but have yet to be migrated to their new cell

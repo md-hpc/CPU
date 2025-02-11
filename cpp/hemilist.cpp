@@ -14,10 +14,11 @@
 
 using namespace std;
 
-char default_path[] = "hemisphere-particles";
+char default_path[] = "hemilist-particles";
 
 char *path = default_path;
-
+char default_log[] = "verify/hemilist.txt";
+char *LOG_PATH=default_log;
 
 
 vector<vector<vector<particle*>>> neighbors;
