@@ -20,9 +20,9 @@ char *LOG_PATH = default_log;
 char *path = default_path;
 
 
-void make_neighbor_lists(long);
-void velocity_update(long);
-void position_update(long);
+void make_neighbor_lists(int);
+void velocity_update(int);
+void position_update(int);
 
 #ifdef DEBUG
 int *interactions;
@@ -141,7 +141,7 @@ int main(int argc, char **argv) {
     close(fd);
 }
 
-void make_neighbor_lists(long hci) {
+void make_neighbor_lists(int hci) {
     int ccidx[3];
     float r;
     int i,j,k;
@@ -191,7 +191,7 @@ void make_neighbor_lists(long hci) {
     }
 }
 
-void velocity_update(long ci) {
+void velocity_update(int ci) {
     vec v;
     float r,f;
 
@@ -223,7 +223,7 @@ void velocity_update(long ci) {
     }
 }
 
-void position_update(long ci) {
+void position_update(int ci) {
     vector<particle> *cell = &cells[ci];
     int np = cell->size();
     particle *p;

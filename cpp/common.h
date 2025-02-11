@@ -80,7 +80,7 @@ void cubic_idx(int *, int);
 float subm(float, float);
 float lj(float);
 float frand(void);
-void thread(void (*)(long), long);
+void thread(void (*)(int), int);
 int parse_cli(int, char **);
 void init_particles(vector<particle> &);
 void save(vector<particle> &, int);

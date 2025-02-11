@@ -165,20 +165,52 @@ float frand() {
 }
 
 
-void thread(void (*kernel)(long), long n) {
-    pthread_t tids[THREADS];
-    long i;
-    void *ret;
-    int t, r;
-    
-    for (t = 0; t < n; t += THREADS) {
-        r = n - t < THREADS ? n - t : THREADS;
+typedef struct {
+    int core;
+    int start;
+    int stop;
+    void (*kernel)(int);
+} job_t;
 
-        for (i = 0; i < r; i++) {
-            pthread_create(&tids[i], NULL, (void*(*)(void*)) kernel, (void *) i);
-        }
-        for (i = 0; i < r; i++) {
-            pthread_join(tids[i], &ret);
+void *run_kernel(void *spec) {
+    job_t *job = (job_t*) spec;
+
+    cpu_set_t cpuset;
+
+    CPU_ZERO(&cpuset);
+    CPU_SET(job->core, &cpuset);
+    if (0 != pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset)) {
+        perror("could not set affinity");
+        return (void*) 1;
+    }
+    
+    for (int i = job->start; i < job->stop; i++) {
+        job->kernel(i);
+    }
+    
+    return (void*) 0;
+}
+
+void thread(void (*kernel)(int), int n) {
+    pthread_t tids[THREADS];
+    job_t jobs[THREADS];
+    void *ret;
+    int t;
+    int bsize = (n + THREADS - 1) / THREADS;
+    
+    for (t = 0; t < THREADS; t++) {
+        jobs[t].core = t;
+        jobs[t].start = t * bsize;
+        jobs[t].stop = (t + 1) * bsize < n ? (t + 1) * bsize : n;
+        jobs[t].kernel = kernel;
+        
+        pthread_create(&tids[t], NULL, run_kernel, &jobs[t]);
+    }
+
+    for (t = 0; t < THREADS; t++) {
+        pthread_join(tids[t], &ret);
+        if (ret) {
+            exit(1);
         }
     }
 }
@@ -219,6 +251,10 @@ int parse_cli(int argc, char **argv) {
             dprintf(2,"Unrecognized option: %s\n", arg[0]);
             return 1;
         }
+    }
+
+    if (THREADS > sysconf(_SC_NPROCESSORS_ONLN)) {
+        THREADS = sysconf(_SC_NPROCESSORS_ONLN);
     }
 
     return 0;
