@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
     srandom(SEED); 
     for (int i = 0; i < N_PARTICLE; i++) {
         p_ = particle(vec(L*frand(),L*frand(),L*frand()));
-        cells[p_.cell()].push_back(p_);
+        cells[p_.update_cell()].push_back(p_);
     }
 
     fd = open(path,O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
@@ -125,7 +125,7 @@ int main(int argc, char **argv) {
                 p->r += p->v * DT;
                 p->r.apbc();
 
-                cidx = p->cell();
+                cidx = p->update_cell();
                 if (cidx == hidx) {
                     (*hc)[cur++] = *p;
                 } else {
@@ -152,7 +152,7 @@ int main(int argc, char **argv) {
                         particle *p;
                         int np;
                         for (p = &(*outbound)[0], np = outbound->size(); p < &(*outbound)[np]; p++) {
-                            if (p->cell() == hidx) {
+                            if (p->cell == hidx) {
                                 hc->push_back(*p);
                             }
                         }

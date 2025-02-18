@@ -8,13 +8,15 @@
 
 using namespace std;
 
-float SIGMA = 1/2.5;
-float EPSILON = 1/2.5;
-float CUTOFF = 1;
+// Constants for liquid argon
+float SIGMA = 0.34;
+float EPSILON = 120;
+float CUTOFF = .85;
+
 int UNIVERSE_SIZE = 5;
 int N_PARTICLE = 10000;
 int N_TIMESTEP = 10;
-float DT = 0.1;
+float DT = 1e-15;
 int SEED = 0;
 int RESOLUTION = 100;
 int NEIGHBOR_REFRESH_RATE = 18;
@@ -87,6 +89,10 @@ int vec::cell() {
     );
 }
 
+float vec::normsq() {
+    return x*x+y*y+z*z;
+}
+
 float vec::norm() {
     return sqrt(x*x+y*y+z*z);
 }
@@ -115,21 +121,55 @@ particle::particle(vec r) : r(r), v(vec(0,0,0)) {
     id = counter++;
 }
 
-int particle::cell() {
-    return r.cell();
+
+int particle::update_cell() {
+#ifdef DEBUG
+    old_cell = cell;
+#endif
+    cell = r.cell();
+    return cell;
+}
+
+#ifdef DEBUG
+char *particle::str() {
+    sprintf(dbstr,"%d %d %d", id, cell, old_cell);
+    return dbstr;
+}
+#endif
+
+timer::timer() : time(0), running(false) {}
+
+void timer::start() {
+    last = rdtsc();
+}
+
+void timer::stop() {
+    time += rdtsc() - last;
+}
+
+unsigned long timer::get() {
+    return time;
+}
+
+static inline int apbci(int i) {
+    i = i < 0 ? i + UNIVERSE_SIZE : i;
+    i = i >= UNIVERSE_SIZE ? i - UNIVERSE_SIZE : i;
+    return i;
 }
 
 int linear_idx(int i, int j, int k) {
-    i = i < 0 ? i + UNIVERSE_SIZE : i;
-    j = j < 0 ? j + UNIVERSE_SIZE : j;
-    k = k < 0 ? k + UNIVERSE_SIZE : k;
-    return (i%UNIVERSE_SIZE) + (j%UNIVERSE_SIZE)*UNIVERSE_SIZE + (k%UNIVERSE_SIZE)*powl(UNIVERSE_SIZE,2);
+    i = apbci(i);
+    j = apbci(j);
+    k = apbci(k);
+    return i + j*UNIVERSE_SIZE + k*UNIVERSE_SIZE*UNIVERSE_SIZE;
 }
 
 void cubic_idx(int *res, int idx) {
-    res[0] = idx % UNIVERSE_SIZE;
-    res[1] = (idx/UNIVERSE_SIZE)%UNIVERSE_SIZE;
-    res[2] = (idx/(UNIVERSE_SIZE*UNIVERSE_SIZE))%UNIVERSE_SIZE;
+    res[2] = idx / (UNIVERSE_SIZE * UNIVERSE_SIZE);
+    idx -= res[2] * UNIVERSE_SIZE * UNIVERSE_SIZE;
+    res[1] = idx / UNIVERSE_SIZE;
+    idx -= res[1] * UNIVERSE_SIZE;
+    res[0] = idx;
 }
 
 float subm(float a, float b) {
@@ -295,4 +335,17 @@ void save(vector<particle> &particles, int fd) {
         particles[pi].r.read(buf);
         write(fd,buf,3*sizeof(float));
     }
+}
+
+unsigned long rdtsc() {
+  union {
+    unsigned long long int64;
+    struct {unsigned int lo, hi;} int32;
+  } p;
+  __asm__ __volatile__ (
+    "rdtsc" :
+    "=a" (p.int32.lo),
+    "=d"(p.int32.hi)
+  );
+  return p.int64;
 }

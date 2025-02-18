@@ -34,14 +34,43 @@ vector<vector<particle>> cells;
 
 vector<particle> particles;
 
-int t;
+template <typename T>
+class container { 
+public:
+	container() : block(NULL), n(0), c(0) {};
+	contianer(T *block, int n) : block(block), n(n), c(0) {};
+
+	T &operator[](int i) {
+		return block[i];
+	}
+
+	void push_back(T x) {
+		if (c > n) {
+			throw 1;
+		}
+		block[c++] = x;
+	}
+
+private:
+	T *block;
+	int n;
+	int c;
+}
+
+int t; // timestep
+
+// Cutoff radius. CUTOFF is 1.2 * R because we need the neighbor list
+// to include particles outside the regular cutoff radius, and
+// those computations are handled in common.cpp. For our computations, 
+// we use this value
+float R;
 
 int main(int argc, char **argv) {
     char **arg;
     particle *p, p_, *pr, *pn;
 
     vector<vector<particle*>> *cell_neighbors;
-    vector<particle*> *neighbor_list;
+    neighbor_list *neighbor_list;
     vector<particle> *cell, *nc, *hc;
 
     int i, j, k, n;
@@ -61,8 +90,10 @@ int main(int argc, char **argv) {
 
     cells.resize(N_CELL);
     neighbors.resize(N_CELL);
-    
+
+    R = CUTOFF;
     CUTOFF *= 1.2;
+
     init_particles(particles);
     for (int i = 0; i < N_PARTICLE; i++) {
         p = &particles[i];
@@ -146,6 +177,7 @@ void make_neighbor_lists(int hci) {
     int ccidx[3];
     float r;
     int i,j,k;
+    vec v;
 
     vector<particle> *hc = &cells[hci];
     cubic_idx(ccidx, hci);
@@ -180,8 +212,11 @@ void make_neighbor_lists(int hci) {
                             printf("%d %d\n",BR, BN);
                         }
                         #endif
+                        v = (pn->r % pr->r);
+                        if (v.x < 0)
+                            continue;
 
-                        r = (pn->r % pr->r).norm();
+                        r = v.norm();
                         if (r < CUTOFF && r > 0) {
                             neighbor_list->push_back(pn);
                         }
@@ -220,6 +255,8 @@ void velocity_update(int ci) {
             f = lj(r);
             v *= f / r * DT;
             pr->v += v;
+            v *= -1;
+            pn->v += v;
         }
     }
 }

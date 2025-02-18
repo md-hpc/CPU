@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 
 #include <vector>
+#include <atomic>
 
 using namespace std;
 
@@ -29,12 +30,29 @@ int *interactions;
 int logfd;
 #endif 
 
-vector<vector<vector<particle*>>> neighbors;
+vector<vector<neighbor_list>> neighbors;
 vector<vector<particle>> cells;
 
 vector<particle> particles;
 
-int t;
+
+typedef struct {
+	vector<particle*> core;
+	vector<particle*> xp, yp, zp, xn, yn, zn;
+} neighbor_list;
+
+int t; // timestep
+
+// Cutoff radius. CUTOFF is 1.2 * R because we need the neighbor list
+// to include particles outside the regular cutoff radius, and
+// those computations are handled in common.cpp. For our computations, 
+// we use this value
+float R;
+
+// time computing nontrivial neighbors, global
+atomic<unsigned long> tcnn_g{0};
+// time computing all neighbors, global
+atomic<unsigned long> tcan_g{0};
 
 int main(int argc, char **argv) {
     char **arg;
@@ -61,8 +79,17 @@ int main(int argc, char **argv) {
 
     cells.resize(N_CELL);
     neighbors.resize(N_CELL);
-    
+
+    R = CUTOFF;
     CUTOFF *= 1.2;
+
+
+    timer total;
+    timer list_total;
+    timer list_thread;
+    timer velocity;
+    timer position;
+
     init_particles(particles);
     for (int i = 0; i < N_PARTICLE; i++) {
         p = &particles[i];
@@ -82,6 +109,7 @@ int main(int argc, char **argv) {
     int hdr[2] = {N_PARTICLE, RESOLUTION};
     write(fd, hdr, sizeof(int) * 2);
 
+    total.start();
     for (t = 0; t < N_TIMESTEP; t++) {
         printf("Timestep %d\n",t);      
         
@@ -97,6 +125,7 @@ int main(int argc, char **argv) {
         // velocity update
         if (t % NEIGHBOR_REFRESH_RATE == 0) {
             // collect particles into one big list
+            list_total.start();
             int cidx;
 
             for (cidx = 0; cidx < N_CELL; cidx++) {
@@ -120,14 +149,22 @@ int main(int argc, char **argv) {
             }
 
             // construct neighbor lists
+            list_thread.start();
             thread(make_neighbor_lists, N_CELL);
+            list_thread.stop();
+
+            list_total.stop();
         }
 
         // velocity update
+        velocity.start();
         thread(velocity_update, N_CELL);
+        velocity.stop();
 
-        // position update       
+        // position update
+        position.start();
         thread(position_update, N_CELL);
+        position.stop();
 
         if (t % RESOLUTION == 0) {
             for (vector<vector<particle>>::iterator cell = cells.begin(); cell != cells.end(); ++cell) {
@@ -138,7 +175,17 @@ int main(int argc, char **argv) {
             }
         }
     }
+    total.stop();
 
+    unsigned long tcnn = tcnn_g;
+    unsigned long tcan = tcan_g;
+    printf("total: %ld\n",total.get());
+    printf("list total: %ld\n", list_total.get());
+    printf("list threaded: %ld\n", list_thread.get());
+    printf("velocity total: %ld\n", velocity.get()); 
+    printf("time computing nontrivial neighbors: %ld\n", tcnn);
+    printf("time computing all neighbors: %ld\n", tcan); 
+    printf("position: %ld\n", position.get());
     close(fd);
 }
 
@@ -146,6 +193,7 @@ void make_neighbor_lists(int hci) {
     int ccidx[3];
     float r;
     int i,j,k;
+    vec v;
 
     vector<particle> *hc = &cells[hci];
     cubic_idx(ccidx, hci);
@@ -153,6 +201,9 @@ void make_neighbor_lists(int hci) {
     j = ccidx[1];
     k = ccidx[2];
     
+    float csq = CUTOFF * CUTOFF;
+	float b = sqrt(1/3);
+
     for (int di = -1; di <= 1; di++) {
         for (int dj = -1; dj <= 1; dj++) {
             for (int dk = -1; dk <= 1; dk++) {
@@ -181,9 +232,21 @@ void make_neighbor_lists(int hci) {
                         }
                         #endif
 
-                        r = (pn->r % pr->r).norm();
+                        v = (pn->r % pr->r);
+                        if (v.x < 0)
+                            continue;
+
+                        r = v.norm();
                         if (r < CUTOFF && r > 0) {
-                            neighbor_list->push_back(pn);
+							if (abs(r.x) < b && abs(r.y) < b && abs(r.z) < b) {
+                            	neighbor_list->list.push_back(pn);
+							} else if (r.x < -b) {
+								neighbor_list->xn.push_back(pn);
+							} else if (r.x > b) {
+								neighbor_list->xp.push_back(pn);
+							} else if (r.y < -b) {
+								neighbor_list->yn.push_back(pn);
+
                         }
                     }
                 }
@@ -196,9 +259,15 @@ void velocity_update(int ci) {
     vec v;
     float r,f;
 
+    timer tcan, tcnn;
+
+
     vector<particle> *cell = &cells[ci];
     vector<vector<particle*>> *cell_neighbors = &neighbors[ci];
     int nr = cell_neighbors->size();
+    
+    float csq = R*R;
+    
     for (int ri = 0; ri < nr; ri++) { 
         particle *pr = &cells[ci][ri];
 
@@ -206,7 +275,8 @@ void velocity_update(int ci) {
         int nn = neighbor_list->size();
         for (int ni = 0; ni < nn; ni++) {
             particle *pn = (*neighbor_list)[ni];
-                                
+            tcan.start();
+            tcnn.start();
 #ifdef DEBUG
             if (pr->id == BR && pn->id == BN) {
                 printf("%d %d\n", BR, BN);
@@ -216,12 +286,26 @@ void velocity_update(int ci) {
 #endif
 
             v = pn->r % pr->r;
-            r = v.norm();
+            r = v.normsq();
+			
+			if (r > csq) {
+				tcan.stop();
+				continue;
+			}
+
+            r = sqrt(r);
             f = lj(r);
             v *= f / r * DT;
             pr->v += v;
+            v *= -1;
+            pn->v += v;
+            tcnn.stop();
+            tcan.stop();
         }
     }
+
+    tcnn_g.fetch_add(tcnn.get());
+    tcan_g.fetch_add(tcan.get());
 }
 
 void position_update(int ci) {

@@ -1,11 +1,11 @@
 
-gxx = g++ -lm common.cpp
-common = common.cpp common.h
-bin = reference list list-thread cells hemisphere hemilist
+ROOT_DIR := /home/vraiti/mdhpc/cpu/cpp
+gxx := g++ -O3 -lm $(ROOT_DIR)/common.cpp -I$(ROOT_DIR)
+common := $(ROOT_DIR)/common.cpp $(ROOT_DIR)/common.h
 
 all: stamp-all build
 
-debug: gxx += -g -DDEBUG
+debug: gxx += -g -DDEBUG 
 debug: stamp-debug build
 
 stamp-debug:
@@ -22,3 +22,7 @@ build: $(bin)
 
 %: %.cpp $(common)
 	$(gxx) $@.cpp -o $@
+
+.PHONY: neighbor-filters
+neighbor-filters: 
+	$(MAKE) -C $@ 

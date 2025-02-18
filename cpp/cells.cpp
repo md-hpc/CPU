@@ -37,14 +37,16 @@ int main(int argc, char **argv) {
     int di, dj, dk;
     int ci, pi, nci;
     int cci[3];
-
-    int dirfd, fd;
+    
+    int dirfd, fd, logfd, nulfd;
 
     float r, f, buf[3];
 
     vec v, v_r;
 
     int cur;
+
+    long interactions = 0;
 
     if (parse_cli(argc, argv)) {
         exit(1);
@@ -56,7 +58,7 @@ int main(int argc, char **argv) {
     init_particles(particles);
     for (int i = 0; i < N_PARTICLE; i++) {
         p = &particles[i];
-        cells[p->cell()].push_back(*p);
+        cells[p->update_cell()].push_back(*p);
     }
     particles.resize(0);
 
@@ -67,10 +69,12 @@ int main(int argc, char **argv) {
     }
     int hdr[2] = {N_PARTICLE, RESOLUTION};
     write(fd, hdr, sizeof(int) * 2);
+    
+    logfd = open(LOG_PATH, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+    nulfd = open("/dev/null", O_RDWR);
 
     for (int t = 0; t < N_TIMESTEP; t++) {
         dprintf(2,"Timestep %d\n",t);        
-        
         for (int hci = 0; hci < N_CELL; hci++) {
             hc = &cells[hci];
 
@@ -95,7 +99,7 @@ int main(int argc, char **argv) {
                                
 #ifdef DEBUG
                                 if (pr->id == BR && pn->id == BN) {
-                                    dprintf(2,"%d %d\n");
+                                    dprintf(nulfd,"%d %d\n");
                                 }
 #endif
 
@@ -109,7 +113,7 @@ int main(int argc, char **argv) {
                                    continue;
                                 }
 #ifdef DEBUG
-                                printf("%d %d %d\n",t, pr->id, pn->id);
+                                dprintf(logfd, "%d %d %d\n",t, pr->id, pn->id);
 #endif
                                 f = lj(r);
                                 v *= f / r * DT;
@@ -138,11 +142,16 @@ int main(int argc, char **argv) {
             for (pi = 0; pi < np; pi++) {
                 p = &(*cell)[pi];
                 p->r += p->v * DT;
-                
-                hci = p->cell();
+                p->r.apbc();
+                hci = p->update_cell();
+
                 if (hci == ci) {
                     (*cell)[cur++] = *p;
                 } else {
+                    #ifdef DEBUG                
+                    printf("s %d %s\n",t,p->str());
+                    #endif
+
                     outbounds[ci].push_back(*p);
                 }
             }
@@ -161,6 +170,8 @@ int main(int argc, char **argv) {
                 for (int dj = -1; dj <= 1; dj++) {
                     for (int dk = -1; dk <= 1; dk++) {
                         nci = linear_idx(i+di, j+dj, k+dk);
+                        if (hci == 72)
+                            printf("break\n");
                         outbound = &outbounds[nci];
                         
                         int pi;
@@ -168,15 +179,19 @@ int main(int argc, char **argv) {
                         int np = outbound->size();
                         for (pi = 0; pi < np; pi++) {
                             p = &(*outbound)[pi];
-                            if (p->cell() == hci) {
+                            if (p->cell == hci) {
                                 hc->push_back(*p);
+                                
+                                #ifdef DEBUG
+                                printf("r %d %s\n",t,p->str());
+                                #endif
                             }
                         }
                     }
                 }
             }
         }
-
+	
         // save results
         if (t % RESOLUTION == 0) {
             save(cells, fd);

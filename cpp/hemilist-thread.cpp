@@ -34,7 +34,13 @@ vector<vector<particle>> cells;
 
 vector<particle> particles;
 
-int t;
+int t; // timestep
+
+// Cutoff radius. CUTOFF is 1.2 * R because we need the neighbor list
+// to include particles outside the regular cutoff radius, and
+// those computations are handled in common.cpp. For our computations, 
+// we use this value
+float R;
 
 int main(int argc, char **argv) {
     char **arg;
@@ -61,8 +67,10 @@ int main(int argc, char **argv) {
 
     cells.resize(N_CELL);
     neighbors.resize(N_CELL);
-    
+
+    R = CUTOFF;
     CUTOFF *= 1.2;
+
     init_particles(particles);
     for (int i = 0; i < N_PARTICLE; i++) {
         p = &particles[i];
@@ -146,6 +154,7 @@ void make_neighbor_lists(int hci) {
     int ccidx[3];
     float r;
     int i,j,k;
+    vec v;
 
     vector<particle> *hc = &cells[hci];
     cubic_idx(ccidx, hci);
@@ -180,8 +189,11 @@ void make_neighbor_lists(int hci) {
                             printf("%d %d\n",BR, BN);
                         }
                         #endif
+                        v = (pn->r % pr->r);
+                        if (v.x < 0)
+                            continue;
 
-                        r = (pn->r % pr->r).norm();
+                        r = v.norm();
                         if (r < CUTOFF && r > 0) {
                             neighbor_list->push_back(pn);
                         }
@@ -220,6 +232,8 @@ void velocity_update(int ci) {
             f = lj(r);
             v *= f / r * DT;
             pr->v += v;
+            v *= -1;
+            pn->v += v;
         }
     }
 }

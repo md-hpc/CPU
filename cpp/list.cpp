@@ -56,7 +56,8 @@ int main(int argc, char **argv) {
     init_particles(particles);
     for (int i = 0; i < N_PARTICLE; i++) {
         p = &particles[i];
-        cells[p->cell()].push_back(*p);
+        p->update_cell();
+        cells[p->cell].push_back(*p);
     }
 
     fd = open(path,O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
@@ -85,7 +86,7 @@ int main(int argc, char **argv) {
 
             // bin particles into cells
             for (int pidx = 0; pidx < N_PARTICLE; pidx++) {
-                cidx = particles[pidx].cell();
+                cidx = particles[pidx].update_cell();
                 cells[cidx].push_back(particles[pidx]);
             }
             

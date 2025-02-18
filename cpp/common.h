@@ -50,6 +50,7 @@ public:
     int cell();
 
     float norm();
+    float normsq();
 
     void read(float *buf);
 
@@ -67,13 +68,36 @@ public:
     particle();
     particle(vec r);
     
-    int cell();
+    int update_cell();
 
     vec r;
     vec v;
     int id;
+    int cell;
     static int counter;
+#ifdef DEBUG
+    char *str();
+
+private:
+    char dbstr[16]; 
+    int old_cell;
+#endif
+
 }; 
+
+class timer {
+public:
+    timer();
+
+    void start();
+    void stop();
+    unsigned long get();
+
+private:
+    unsigned long time;
+    unsigned long last;
+    bool running;
+};
 
 int linear_idx(int, int, int);
 void cubic_idx(int *, int);
@@ -86,4 +110,4 @@ void init_particles(vector<particle> &);
 void save(vector<particle> &, int);
 void save(vector<vector<particle>> &, int);
 
-
+unsigned long rdtsc();
