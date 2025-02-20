@@ -303,7 +303,7 @@ int parse_cli(int argc, char **argv) {
         THREADS = sysconf(_SC_NPROCESSORS_ONLN);
     }
 
-	if (ALGO = ALGO_LISTS) {
+	if (ALGO == ALGO_LISTS) {
 		CUTOFF = 1.2 * CUTOFF;
 	}
 
@@ -315,6 +315,8 @@ int parse_cli(int argc, char **argv) {
 			N_PARTICLE = 138 * N_CELL;
 		}
 	}
+
+	printf("ALGO: %d, THREADS: %d, N_PARTICLE %d, N_CELL: %d\n",ALGO, THREADS, N_PARTICLE, N_CELL);
 
     return 0;
 }

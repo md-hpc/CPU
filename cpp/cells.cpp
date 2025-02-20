@@ -48,6 +48,7 @@ int main(int argc, char **argv) {
 
     long interactions = 0;
 
+	ALGO = ALGO_CELLS;
     if (parse_cli(argc, argv)) {
         exit(1);
     }
