@@ -1,7 +1,13 @@
 #include <vector>
 #include <cmath>
 using namespace std;
- 
+
+typedef enum {
+	ALGO_CELLS,
+	ALGO_LISTS,
+	ALGO_NONE
+} mdalgo_t;
+
 extern float SIGMA;
 extern float EPSILON;
 extern float CUTOFF;
@@ -17,6 +23,7 @@ extern int BR;
 extern int BN;
 extern int THREADS;
 extern char *LOG_PATH;
+extern mdalgo_t ALGO;
 
 
 #define N_CELL (UNIVERSE_SIZE*UNIVERSE_SIZE*UNIVERSE_SIZE)

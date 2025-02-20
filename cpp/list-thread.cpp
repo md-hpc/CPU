@@ -36,6 +36,8 @@ vector<particle> particles;
 
 int t;
 
+float R;
+
 int main(int argc, char **argv) {
     char **arg;
     particle *p, p_, *pr, *pn;
@@ -57,12 +59,13 @@ int main(int argc, char **argv) {
 
     vec v;
 
-    parse_cli(argc, argv);
+	ALGO = ALGO_LISTS;
+    R = CUTOFF;
+	parse_cli(argc, argv);
 
     cells.resize(N_CELL);
     neighbors.resize(N_CELL);
     
-    CUTOFF *= 1.2;
     init_particles(particles);
     for (int i = 0; i < N_PARTICLE; i++) {
         p = &particles[i];
@@ -153,6 +156,8 @@ void make_neighbor_lists(int hci) {
     j = ccidx[1];
     k = ccidx[2];
     
+	float csq = R * R;
+
     for (int di = -1; di <= 1; di++) {
         for (int dj = -1; dj <= 1; dj++) {
             for (int dk = -1; dk <= 1; dk++) {
@@ -181,8 +186,8 @@ void make_neighbor_lists(int hci) {
                         }
                         #endif
 
-                        r = (pn->r % pr->r).norm();
-                        if (r < CUTOFF && r > 0) {
+                        r = (pn->r % pr->r).normsq();
+                        if (r < csq && r > 0) {
                             neighbor_list->push_back(pn);
                         }
                     }
@@ -195,6 +200,7 @@ void make_neighbor_lists(int hci) {
 void velocity_update(int ci) {
     vec v;
     float r,f;
+	float csq = R * R;
 
     vector<particle> *cell = &cells[ci];
     vector<vector<particle*>> *cell_neighbors = &neighbors[ci];
@@ -214,9 +220,13 @@ void velocity_update(int ci) {
             dprintf(logfd,"%d %d %d\n", t, pr->id, pn->id);
             interactions[ci]++;
 #endif
-
             v = pn->r % pr->r;
-            r = v.norm();
+            r = v.normsq();
+
+			if (r > csq)
+				continue;
+			r = sqrt(r);
+
             f = lj(r);
             v *= f / r * DT;
             pr->v += v;

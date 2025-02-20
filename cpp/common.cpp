@@ -14,7 +14,7 @@ float EPSILON = 120;
 float CUTOFF = .85;
 
 int UNIVERSE_SIZE = 5;
-int N_PARTICLE = 10000;
+int N_PARTICLE = -1;
 int N_TIMESTEP = 10;
 float DT = 1e-15;
 int SEED = 0;
@@ -23,6 +23,8 @@ int NEIGHBOR_REFRESH_RATE = 18;
 int BR = -1;
 int BN = -1;
 int THREADS = 128;
+int SAVE = 0;
+mdalgo_t ALGO = ALGO_NONE;
 
 vec::vec(float x, float y, float z) : x(x), y(y), z(z) {};
 vec::vec() : x(0), y(0), z(0) {};
@@ -191,7 +193,7 @@ float subm(float a, float b) {
 }
 
 float lj(float r) {
-    float f = 4*EPSILON/r*(6*pow(SIGMA,6)/pow(r,7) - 12*pow(SIGMA,12)/pow(r,13));
+    float f = -4*EPSILON*(6*pow(SIGMA,6)/pow(r,7) - 12*pow(SIGMA,12)/pow(r,13));
 
     if (f < LJ_MIN) {
             return LJ_MIN;
@@ -256,11 +258,12 @@ void thread(void (*kernel)(int), int n) {
 }
 
 int parse_cli(int argc, char **argv) {    
-    for (int i = 0; i < argc; i++) {
-        dprintf(2,"%s ",argv[i]);
-    }
-    dprintf(2,"\n");
-    for (char **arg = &argv[1]; arg < &argv[argc]; arg+=2) {
+    if (ALGO == ALGO_NONE) {
+		dprintf(2,"Must set ALGO before calling parse_cli");
+		return 1;
+	}
+
+	for (char **arg = &argv[1]; arg < &argv[argc]; arg+=2) {
         if (!strcmp(arg[0],"--sigma")) {
             SIGMA = atof(arg[1]);
         } else if (!strcmp(arg[0],"--epsilon")) {
@@ -287,6 +290,9 @@ int parse_cli(int argc, char **argv) {
             THREADS = atoi(arg[1]);
         } else if (!strcmp(arg[0],"--log-path")) {
             LOG_PATH = arg[1];
+		} else if (!strcmp(arg[0],"--save")) {
+			SAVE = 1;
+			arg--;
         } else {
             dprintf(2,"Unrecognized option: %s\n", arg[0]);
             return 1;
@@ -296,6 +302,19 @@ int parse_cli(int argc, char **argv) {
     if (THREADS > sysconf(_SC_NPROCESSORS_ONLN)) {
         THREADS = sysconf(_SC_NPROCESSORS_ONLN);
     }
+
+	if (ALGO = ALGO_LISTS) {
+		CUTOFF = 1.2 * CUTOFF;
+	}
+
+	if (N_PARTICLE == -1) {
+		if (ALGO == ALGO_CELLS) {
+			N_PARTICLE = 80 * N_CELL;
+		}
+		if (ALGO == ALGO_LISTS) {
+			N_PARTICLE = 138 * N_CELL;
+		}
+	}
 
     return 0;
 }
@@ -308,7 +327,10 @@ void init_particles(vector<particle> &particles) {
 }
 
 void save(vector<vector<particle>> &cells, int fd) {
-    int ci;
+    if (!SAVE) 
+		return;
+
+	int ci;
     int pi;
     int np;
 
@@ -326,7 +348,10 @@ void save(vector<vector<particle>> &cells, int fd) {
 }
 
 void save(vector<particle> &particles, int fd) {
-    int pi;
+    if (!SAVE)
+		return;
+
+	int pi;
     int np;
     float buf[3];
 

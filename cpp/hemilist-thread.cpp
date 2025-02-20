@@ -63,13 +63,13 @@ int main(int argc, char **argv) {
 
     vec v;
 
+	R = CUTOFF;
+	ALGO = ALGO_LISTS;
     parse_cli(argc, argv);
 
     cells.resize(N_CELL);
     neighbors.resize(N_CELL);
 
-    R = CUTOFF;
-    CUTOFF *= 1.2;
 
     init_particles(particles);
     for (int i = 0; i < N_PARTICLE; i++) {
@@ -126,7 +126,7 @@ int main(int argc, char **argv) {
             for (int cidx = 0; cidx < N_CELL; cidx++) {
                 neighbors[cidx].resize(cells[cidx].size());
             }
-
+			
             // construct neighbor lists
             thread(make_neighbor_lists, N_CELL);
         }
@@ -161,11 +161,16 @@ void make_neighbor_lists(int hci) {
     i = ccidx[0];
     j = ccidx[1];
     k = ccidx[2];
-    
+   
+	float csq = CUTOFF * CUTOFF;
+
     for (int di = -1; di <= 1; di++) {
         for (int dj = -1; dj <= 1; dj++) {
             for (int dk = -1; dk <= 1; dk++) {
-                int nci = linear_idx(i+di, j+dj, k+dk);
+                if (di < 0 || di == 0 && dj < 0 || di == 0 && dj == 0 && dk < 0)
+					continue;
+
+				int nci = linear_idx(i+di, j+dj, k+dk);
                 vector<particle> *nc = &cells[nci];
                 
                 particle *pr, *pn;
@@ -193,8 +198,8 @@ void make_neighbor_lists(int hci) {
                         if (v.x < 0)
                             continue;
 
-                        r = v.norm();
-                        if (r < CUTOFF && r > 0) {
+                        r = v.normsq();
+                        if (r < csq && r > 0) {
                             neighbor_list->push_back(pn);
                         }
                     }
@@ -211,6 +216,9 @@ void velocity_update(int ci) {
     vector<particle> *cell = &cells[ci];
     vector<vector<particle*>> *cell_neighbors = &neighbors[ci];
     int nr = cell_neighbors->size();
+
+	float csq = R * R;
+
     for (int ri = 0; ri < nr; ri++) { 
         particle *pr = &cells[ci][ri];
 
@@ -228,7 +236,11 @@ void velocity_update(int ci) {
 #endif
 
             v = pn->r % pr->r;
-            r = v.norm();
+            r = v.normsq();
+			if (r > csq)
+				continue;
+			r = sqrt(r);
+
             f = lj(r);
             v *= f / r * DT;
             pr->v += v;

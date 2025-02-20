@@ -111,7 +111,10 @@ void velocity_update(int hci) {
     for (int di = -1; di <= 1; di++) {
         for (int dj = -1; dj <= 1; dj++) {
             for (int dk = -1; dk <= 1; dk++) {
-                nci = linear_idx(i+di, j+dj, k+dk);
+                if (di < 0 || di == 0 && dj < 0 || di == 0 && dj == 0 && dk < 0)
+					continue;
+
+				nci = linear_idx(i+di, j+dj, k+dk);
                 nc = &cells[nci];
                 
                 particle *pr, *pn;
@@ -132,7 +135,10 @@ void velocity_update(int hci) {
                             continue;
                         
                         v = pn->r % pr->r;            
-                        r = v.norm();
+                        if (v.x < 0)
+							continue;
+
+						r = v.normsq();
 
                         if (r > CUTOFF) {
                            continue;
@@ -140,10 +146,14 @@ void velocity_update(int hci) {
 #ifdef DEBUG
                         printf("%d %d %d\n",t, pr->id, pn->id);
 #endif
-                        f = lj(r);
+                        r = sqrt(r);
+						f = lj(r);
                         v *= f / r * DT;
                         
                         pr->v += v;
+
+						v *= -1;
+						pn->v += v;
                     }
                 }
             }
