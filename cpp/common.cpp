@@ -9,22 +9,38 @@
 using namespace std;
 
 // Constants for liquid argon
+/*
 float SIGMA = 0.34;
 float EPSILON = 120;
 float CUTOFF = .85;
+float M = 39.984 * 1e-3 / (6.022e23);
+float DT = 1e-15;
+*/
+// Uhh
+float SIGMA = 1;
+float EPSILON = 1;
+float CUTOFF = 2.5;
+float M = 1;
+float DT = 1e-15;
+
+// length of a cell. Is CUTOFF if ALGO_CELLS and 1.2*CUTOFF if ALGO_LISTS
+float R;
+
 
 int UNIVERSE_SIZE = 5;
 int N_PARTICLE = -1;
 int N_TIMESTEP = 10;
-float DT = 1e-15;
 int SEED = 0;
-int RESOLUTION = 100;
+int RESOLUTION = 10;
 int NEIGHBOR_REFRESH_RATE = 18;
 int BR = -1;
 int BN = -1;
 int THREADS = 128;
 int SAVE = 0;
 mdalgo_t ALGO = ALGO_NONE;
+
+float LJ_MIN; // minimum lj. Arbitrarily 4x the magnitude of the potential well
+float CSQ; // cutoff squared
 
 vec::vec(float x, float y, float z) : x(x), y(y), z(z) {};
 vec::vec() : x(0), y(0), z(0) {};
@@ -77,17 +93,22 @@ vec vec::operator%(const vec &other) {
     );
 }
 
-void vec::apbc() {
+static inline float apbcf(float x) {
     x = fmodf(x,L);
-    y = fmodf(y,L);
-    z = fmodf(z,L);
+    return x < 0 ? x + L : x;
+}
+
+void vec::apbc() {
+	x = apbcf(x);
+	y = apbcf(y);
+	z = apbcf(z);
 }
 
 int vec::cell() {
     return linear_idx(
-        (int)x/CUTOFF,
-        (int)y/CUTOFF,
-        (int)z/CUTOFF
+        (int)x/R,
+        (int)y/R,
+        (int)z/R
     );
 }
 
@@ -120,16 +141,61 @@ int particle::counter = 0;
 
 particle::particle() : r(vec(0,0,0)), v(vec(0,0,0)) {}
 particle::particle(vec r) : r(r), v(vec(0,0,0)) {
-    id = counter++;
+    cell = r.cell();
+	id = counter++;
+}
+
+int particle::interact(particle *pn) {
+	float f, r;
+	vec dv;
+
+	if (pn == this) {
+		return 0;
+	}
+
+	dv = pn->r % this->r;
+
+	#ifdef DEBUG
+	// printf("%s - %s = %s\n",pn->r.str(), this->r.str(), dv.str());
+	#endif
+
+	
+	if (ALGO != ALGO_LISTS && dv.x < 0)
+		return 0;
+
+	r = dv.normsq();
+
+	if (r > CSQ) 
+		return 0;
+	
+	r = sqrt(r);
+	
+	f = LJ(r);
+	if (f < -4*LJ(R_MAX)) {
+		f = -4*LJ(R_MAX);
+	}
+
+	dv *= f/r * DT;
+	
+	v += dv;
+	dv *= -1;
+	pn->v += dv;
+	
+	return 1;
 }
 
 
-int particle::update_cell() {
-#ifdef DEBUG
-    old_cell = cell;
-#endif
-    cell = r.cell();
-    return cell;
+void particle::update_position() {
+	vec dr = v * DT;
+
+	#ifdef DEBUG
+	if (dr.x > CUTOFF || dr.y > CUTOFF || dr.z > CUTOFF) {
+		printf("%d has large velocity of %e", id, dr.norm());
+	}
+	#endif
+
+	r += dr;
+	cell = r.cell();
 }
 
 #ifdef DEBUG
@@ -138,6 +204,8 @@ char *particle::str() {
     return dbstr;
 }
 #endif
+
+
 
 timer::timer() : time(0), running(false) {}
 
@@ -193,13 +261,12 @@ float subm(float a, float b) {
 }
 
 float lj(float r) {
-    float f = -4*EPSILON*(6*pow(SIGMA,6)/pow(r,7) - 12*pow(SIGMA,12)/pow(r,13));
+   	float f = LJ(r);
+	if (f < -4*LJ(R_MAX)) {
+		f = -4*LJ(R_MAX);
+	}
 
-    if (f < LJ_MIN) {
-            return LJ_MIN;
-    } else {
-        return f;
-    }
+	return f;
 }
 
 float frand() {
@@ -211,7 +278,7 @@ typedef struct {
     int core;
     int start;
     int stop;
-    void (*kernel)(int);
+    void (*kernel)(int, int);
 } job_t;
 
 void *run_kernel(void *spec) {
@@ -221,19 +288,19 @@ void *run_kernel(void *spec) {
 
     CPU_ZERO(&cpuset);
     CPU_SET(job->core, &cpuset);
-    if (0 != pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset)) {
+    if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset)) {
         perror("could not set affinity");
         return (void*) 1;
     }
     
     for (int i = job->start; i < job->stop; i++) {
-        job->kernel(i);
+        job->kernel(i, job->core);
     }
     
     return (void*) 0;
 }
 
-void thread(void (*kernel)(int), int n) {
+void thread(void (*kernel)(int, int), int n) {
     pthread_t tids[THREADS];
     job_t jobs[THREADS];
     void *ret;
@@ -246,7 +313,10 @@ void thread(void (*kernel)(int), int n) {
         jobs[t].stop = (t + 1) * bsize < n ? (t + 1) * bsize : n;
         jobs[t].kernel = kernel;
         
-        pthread_create(&tids[t], NULL, run_kernel, &jobs[t]);
+        if (pthread_create(&tids[t], NULL, run_kernel, &jobs[t])) {
+			perror("Could not start thread");
+			exit(1);
+		}
     }
 
     for (t = 0; t < THREADS; t++) {
@@ -259,7 +329,7 @@ void thread(void (*kernel)(int), int n) {
 
 int parse_cli(int argc, char **argv) {    
     if (ALGO == ALGO_NONE) {
-		dprintf(2,"Must set ALGO before calling parse_cli");
+		printf("Must set ALGO before calling parse_cli");
 		return 1;
 	}
 
@@ -299,13 +369,19 @@ int parse_cli(int argc, char **argv) {
         }
     }
 
+	LJ_MIN = -4*LJ(R_MAX);
+
     if (THREADS > sysconf(_SC_NPROCESSORS_ONLN)) {
         THREADS = sysconf(_SC_NPROCESSORS_ONLN);
     }
 
 	if (ALGO == ALGO_LISTS) {
-		CUTOFF = 1.2 * CUTOFF;
+		R = 1.2 * CUTOFF;
+	} else {
+		R = CUTOFF;
 	}
+
+	CSQ = CUTOFF * CUTOFF;
 
 	if (N_PARTICLE == -1) {
 		if (ALGO == ALGO_CELLS) {
@@ -316,7 +392,7 @@ int parse_cli(int argc, char **argv) {
 		}
 	}
 
-	printf("ALGO: %d, THREADS: %d, N_PARTICLE %d, N_CELL: %d\n",ALGO, THREADS, N_PARTICLE, N_CELL);
+	printf("ALGO: %d, THREADS: %d, N_PARTICLE %d, N_CELL: %d\n", ALGO, THREADS, N_PARTICLE, N_CELL);
 
     return 0;
 }
@@ -335,6 +411,7 @@ void save(vector<vector<particle>> &cells, int fd) {
 	int ci;
     int pi;
     int np;
+	particle *p;
 
     float buf[3];
 
@@ -343,9 +420,9 @@ void save(vector<vector<particle>> &cells, int fd) {
         cell = &cells[ci];
         np = cell->size();
         for (pi = 0; pi < np; pi++) {
-            (*cell)[pi].r.read(buf);
-            write(fd,buf,3*sizeof(float));
-        }
+            p = &(*cell)[pi];
+        	dprintf(fd,"%d, %f, %f, %f\n",t,p->r.x, p->r.y, p->r.z);
+		}
     }
 }
 
@@ -355,12 +432,14 @@ void save(vector<particle> &particles, int fd) {
 
 	int pi;
     int np;
-    float buf[3];
+    particle *p;
+	float buf[3];
 
     np = particles.size();
-    for (pi = 0; pi < np; pi++) {
-        particles[pi].r.read(buf);
-        write(fd,buf,3*sizeof(float));
+    
+	for (pi = 0; pi < np; pi++) {
+  		p = &particles[pi];
+        dprintf(fd,"%d, %f, %f, %f\n", t, p->r.x, p->r.y, p->r.z);
     }
 }
 

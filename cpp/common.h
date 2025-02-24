@@ -5,12 +5,16 @@ using namespace std;
 typedef enum {
 	ALGO_CELLS,
 	ALGO_LISTS,
-	ALGO_NONE
+	ALGO_REF_LISTS,
+	ALGO_NONE,
+
 } mdalgo_t;
 
 extern float SIGMA;
 extern float EPSILON;
 extern float CUTOFF;
+extern float M;
+
 extern int UNIVERSE_SIZE;
 extern int N_PARTICLE;
 extern int N_TIMESTEP;
@@ -25,11 +29,19 @@ extern int THREADS;
 extern char *LOG_PATH;
 extern mdalgo_t ALGO;
 
+extern float LJ_MIN;
+extern float R;
+
+extern int t;
 
 #define N_CELL (UNIVERSE_SIZE*UNIVERSE_SIZE*UNIVERSE_SIZE)
-#define L (CUTOFF * UNIVERSE_SIZE)
+#define L (R * UNIVERSE_SIZE)
 
-#define LJ_MIN (-4*24*EPSILON/SIGMA*(powf(7./26.,7./6.)-2*powf(7./26.,13./6.)))
+// The potential well is centered at (26/7)^(1/6)*SIGMA
+#define R_MAX (SIGMA*powf(26/7,1/6))
+#define LJ(r) 4*EPSILON*(6*powf(SIGMA,6)/powf(r,7)-12*powf(SIGMA,12)/powf(r,13))
+
+
 
 #define DIR_MODE (S_IRWXU|S_IRWXG|S_IROTH)
 #define FILE_MODE (S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH)
@@ -74,8 +86,9 @@ class particle {
 public:
     particle();
     particle(vec r);
-    
-    int update_cell();
+
+	int interact(particle *pn);	
+	void update_position();
 
     vec r;
     vec v;
@@ -111,7 +124,7 @@ void cubic_idx(int *, int);
 float subm(float, float);
 float lj(float);
 float frand(void);
-void thread(void (*)(int), int);
+void thread(void (*)(int,int), int);
 int parse_cli(int, char **);
 void init_particles(vector<particle> &);
 void save(vector<particle> &, int);

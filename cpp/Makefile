@@ -1,8 +1,8 @@
 
 ROOT_DIR := /home/vraiti/mdhpc/cpu/cpp
-gxx := g++ -O3 -lm $(ROOT_DIR)/common.cpp -I$(ROOT_DIR)
+gxx := g++ -O1 -lm $(ROOT_DIR)/common.cpp -I$(ROOT_DIR)
 common := $(ROOT_DIR)/common.cpp $(ROOT_DIR)/common.h
-bin = hemilist-thread hemisphere-thread cells-thread list-thread
+bin = reference cells lists #hemilist-thread hemisphere-thread cells-thread list-thread
 
 
 all: stamp-all build

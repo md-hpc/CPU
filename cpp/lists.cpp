@@ -14,94 +14,56 @@
 
 using namespace std;
 
-char default_path[] = "hemisphere-particles";
-char default_log[] = "verify/list.txt";
+char default_path[] = "particles";
+char default_log[] = "validate/lists/interactions";
 char *LOG_PATH = default_log;
 char *path = default_path;
 
 
-void make_neighbor_lists(int);
-void velocity_update(int);
-void position_update(int);
+void make_neighbor_lists(int,int);
+void velocity_update(int,int);
+void position_update(int,int);
 
-#ifdef DEBUG
-int *interactions;
-int logfd;
-#endif 
 
 vector<vector<vector<particle*>>> neighbors;
 vector<vector<particle>> cells;
 
 vector<particle> particles;
 
-int t; // timestep
+int t;
 
-// Cutoff radius. CUTOFF is 1.2 * R because we need the neighbor list
-// to include particles outside the regular cutoff radius, and
-// those computations are handled in common.cpp. For our computations, 
-// we use this value
-float R;
+int *fds;
 
 int main(int argc, char **argv) {
-    char **arg;
-    particle *p, p_, *pr, *pn;
+    particle *p;
+	int fd;
 
-    vector<vector<particle*>> *cell_neighbors;
-    vector<particle*> *neighbor_list;
-    vector<particle> *cell, *nc, *hc;
-
-    int i, j, k, n;
-    int di, dj, dk;
-    int hci, nci, ci;
-    int pi, ni, ri;
-    int nr, nn, np;
-    int ccidx[3];
-
-    int dirfd, fd;
-
-    float r, f, buf[3];
-
-    vec v;
-
-	R = CUTOFF;
 	ALGO = ALGO_LISTS;
-    parse_cli(argc, argv);
+	parse_cli(argc, argv);
 
     cells.resize(N_CELL);
     neighbors.resize(N_CELL);
-
-
+    
     init_particles(particles);
     for (int i = 0; i < N_PARTICLE; i++) {
         p = &particles[i];
-        cells[p->update_cell()].push_back(*p);
+        cells[p->cell].push_back(*p);
     }
+
+	fd = open(path, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
 
     #ifdef DEBUG
-    interactions = (int*) malloc(sizeof(int) * N_CELL);
-    logfd = open(LOG_PATH, O_RDONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR); 
-    #endif
-
-    fd = open(path,O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-    if (fd == -1) {
-        perror("Could not open file");
-        exit(1);
-    }
-    int hdr[2] = {N_PARTICLE, RESOLUTION};
-    write(fd, hdr, sizeof(int) * 2);
+	fds = (int*) malloc(sizeof(int) * THREADS);
+    for (int tid = 0; tid < THREADS; tid++) {
+		char path[16];
+		sprintf(path,"%s%d",LOG_PATH,tid);
+		fds[tid] = open(path, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+	}
+	#endif
 
     for (t = 0; t < N_TIMESTEP; t++) {
         printf("Timestep %d\n",t);      
         
-        #ifdef DEBUG
-        long total_interactions = 0;
-        for (i = 0; i < N_CELL; i++) {
-            total_interactions += interactions[ci];
-            interactions[ci] = 0;
-        }
-        printf("Interactions %d\n",total_interactions);
-        #endif
-
         // velocity update
         if (t % NEIGHBOR_REFRESH_RATE == 0) {
             // collect particles into one big list
@@ -118,7 +80,7 @@ int main(int argc, char **argv) {
 
             // bin particles into cells
             for (int pidx = 0; pidx < N_PARTICLE; pidx++) {
-                cidx = particles[pidx].update_cell();
+                cidx = particles[pidx].cell;
                 cells[cidx].push_back(particles[pidx]);
             }
             
@@ -126,7 +88,7 @@ int main(int argc, char **argv) {
             for (int cidx = 0; cidx < N_CELL; cidx++) {
                 neighbors[cidx].resize(cells[cidx].size());
             }
-			
+
             // construct neighbor lists
             thread(make_neighbor_lists, N_CELL);
         }
@@ -138,39 +100,31 @@ int main(int argc, char **argv) {
         thread(position_update, N_CELL);
 
         if (t % RESOLUTION == 0) {
-            for (vector<vector<particle>>::iterator cell = cells.begin(); cell != cells.end(); ++cell) {
-                for (vector<particle>::iterator p = cell->begin(); p != cell->end(); ++p) {
-                    p->r.read(buf);
-                    write(fd,buf,3*sizeof(float));
-                }
-            }
-        }
+        	save(cells,fd);
+		}
     }
 
     close(fd);
 }
 
-void make_neighbor_lists(int hci) {
+void make_neighbor_lists(int hci, int tid) {
     int ccidx[3];
     float r;
     int i,j,k;
-    vec v;
+	vec v;
 
     vector<particle> *hc = &cells[hci];
     cubic_idx(ccidx, hci);
     i = ccidx[0];
     j = ccidx[1];
     k = ccidx[2];
-   
-	float csq = CUTOFF * CUTOFF;
+    
+	float csq = R * R;
 
     for (int di = -1; di <= 1; di++) {
         for (int dj = -1; dj <= 1; dj++) {
             for (int dk = -1; dk <= 1; dk++) {
-                if (di < 0 || di == 0 && dj < 0 || di == 0 && dj == 0 && dk < 0)
-					continue;
-
-				int nci = linear_idx(i+di, j+dj, k+dk);
+                int nci = linear_idx(i+di, j+dj, k+dk);
                 vector<particle> *nc = &cells[nci];
                 
                 particle *pr, *pn;
@@ -188,18 +142,22 @@ void make_neighbor_lists(int hci) {
 
                     for (ni = 0, nn = nc->size(); ni < nn; ni++) {
                         pn = &cells[nci][ni];
+
+                       	if (pn == pr)
+							continue;
                         
-                        #ifdef DEBUG
+						#ifdef DEBUG
                         if (pn->id == BN && pr->id == BR) {
                             printf("%d %d\n",BR, BN);
                         }
                         #endif
-                        v = (pn->r % pr->r);
-                        if (v.x < 0)
-                            continue;
 
-                        r = v.normsq();
-                        if (r < csq && r > 0) {
+                        v = pn->r % pr->r;
+						if (v.x < 0)
+							continue;
+
+						r = v.normsq();
+                        if (r < csq) {
                             neighbor_list->push_back(pn);
                         }
                     }
@@ -209,16 +167,14 @@ void make_neighbor_lists(int hci) {
     }
 }
 
-void velocity_update(int ci) {
+void velocity_update(int ci, int tid) {
     vec v;
     float r,f;
+	float csq = R * R;
 
     vector<particle> *cell = &cells[ci];
     vector<vector<particle*>> *cell_neighbors = &neighbors[ci];
     int nr = cell_neighbors->size();
-
-	float csq = R * R;
-
     for (int ri = 0; ri < nr; ri++) { 
         particle *pr = &cells[ci][ri];
 
@@ -227,37 +183,27 @@ void velocity_update(int ci) {
         for (int ni = 0; ni < nn; ni++) {
             particle *pn = (*neighbor_list)[ni];
                                 
-#ifdef DEBUG
+			#ifdef DEBUG
             if (pr->id == BR && pn->id == BN) {
                 printf("%d %d\n", BR, BN);
             }
-            dprintf(logfd,"%d %d %d\n", t, pr->id, pn->id);
-            interactions[ci]++;
-#endif
+			#endif
 
-            v = pn->r % pr->r;
-            r = v.normsq();
-			if (r > csq)
-				continue;
-			r = sqrt(r);
-
-            f = lj(r);
-            v *= f / r * DT;
-            pr->v += v;
-            v *= -1;
-            pn->v += v;
+            if (pr->interact(pn)) {
+				#ifdef DEBUG
+				dprintf(fds[tid],"%d %d %d\n", t, pr->id, pn->id);
+				#endif
+			}
         }
     }
 }
 
-void position_update(int ci) {
+void position_update(int ci, int tid) {
     vector<particle> *cell = &cells[ci];
     int np = cell->size();
     particle *p;
 
     for (int pi = 0; pi < np; pi++) {
-        p = &cells[ci][pi];
-        p->r += p->v * DT;
-        p->r.apbc();
+        particles[pi].update_position();
     }
 }

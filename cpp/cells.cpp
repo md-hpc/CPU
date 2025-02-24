@@ -16,7 +16,7 @@ using namespace std;
 
 char default_path[] = "particles";
 char *path = default_path;
-char default_log[] = "verify/cells.cpp";
+char default_log[] = "validate/cells/interactions";
 char *LOG_PATH = default_log;
 
 
@@ -26,6 +26,13 @@ vector<vector<particle>> outbounds;
 vector<vector<particle>> cells;
 vector<particle> particles;
 
+void velocity_update(int,int);
+void position_update(int,int);
+void cell_update(int,int);
+
+int t;
+
+int *fds;
 
 int main(int argc, char **argv) {
     char **arg;
@@ -37,16 +44,14 @@ int main(int argc, char **argv) {
     int di, dj, dk;
     int ci, pi, nci;
     int cci[3];
-    
-    int dirfd, fd, logfd, nulfd;
+
+    int dirfd, fd;
 
     float r, f, buf[3];
 
     vec v, v_r;
 
     int cur;
-
-    long interactions = 0;
 
 	ALGO = ALGO_CELLS;
     if (parse_cli(argc, argv)) {
@@ -59,140 +64,35 @@ int main(int argc, char **argv) {
     init_particles(particles);
     for (int i = 0; i < N_PARTICLE; i++) {
         p = &particles[i];
-        cells[p->update_cell()].push_back(*p);
+        cells[p->cell].push_back(*p);
     }
     particles.resize(0);
 
-    fd = open(path,O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-    if (fd == -1) {
-        perror("Could not open file");
-        exit(1);
-    }
-    int hdr[2] = {N_PARTICLE, RESOLUTION};
-    write(fd, hdr, sizeof(int) * 2);
-    
-    logfd = open(LOG_PATH, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-    nulfd = open("/dev/null", O_RDWR);
 
-    for (int t = 0; t < N_TIMESTEP; t++) {
-        dprintf(2,"Timestep %d\n",t);        
-        for (int hci = 0; hci < N_CELL; hci++) {
-            hc = &cells[hci];
+	fd = open(path, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
 
-            cubic_idx(cci, hci);
-            i = cci[0];
-            j = cci[1];
-            k = cci[2];
+	#ifdef DEBUG
+	fds = (int*) malloc(sizeof(int) * THREADS);
+	for (int tid = 0; tid < THREADS; tid++) {
+		char path[16]; 
+		sprintf(path,"%s%d", LOG_PATH, tid); 
+    	fds[tid] = open(path, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+		if (fds[tid] == -1) {
+        	perror("Could not open file");
+        	exit(1);
+    	}
+	}
+	#endif
 
-            for (int di = -1; di <= 1; di++) {
-                for (int dj = -1; dj <= 1; dj++) {
-                    for (int dk = -1; dk <= 1; dk++) {
-                        nci = linear_idx(i+di, j+dj, k+dk);
-                        nc = &cells[nci];
-                        
-                        particle *pr, *pn;
-                        int ri, ni;
-                        int nr = hc->size(), nn = nc->size(); 
-                        for (ri = 0; ri < nr; ri++) {
-                            pr = &(*hc)[ri];
-                            for (ni = 0; ni < nn; ni++) {
-                                pn = &(*nc)[ni];
-                               
-#ifdef DEBUG
-                                if (pr->id == BR && pn->id == BN) {
-                                    dprintf(nulfd,"%d %d\n");
-                                }
-#endif
-
-                                if (hci == nci && ri == ni)
-                                    continue;
-                                
-                                v = pn->r % pr->r;            
-                                r = v.norm();
-
-                                if (r > CUTOFF) {
-                                   continue;
-                                }
-#ifdef DEBUG
-                                dprintf(logfd, "%d %d %d\n",t, pr->id, pn->id);
-#endif
-                                f = lj(r);
-                                v *= f / r * DT;
-                                
-                                pr->v += v;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-       
-        // position update
-        for (int i = 0; i < outbounds.size(); i++) {
-            outbounds[i].resize(0);
-        }
+    for (t = 0; t < N_TIMESTEP; t++) {
+        printf("Timestep %d\n",t);
         
-        int hci, nc, np;
-        vector<particle> *hc;
-        particle *p;
-        for (ci = 0; ci < N_CELL; ci++) {
-            cell = &cells[ci];
-            cur = 0;
-            np = cell->size();
-            for (pi = 0; pi < np; pi++) {
-                p = &(*cell)[pi];
-                p->r += p->v * DT;
-                p->r.apbc();
-                hci = p->update_cell();
+        thread(velocity_update, N_CELL);
+ 
+        thread(position_update, N_CELL);
 
-                if (hci == ci) {
-                    (*cell)[cur++] = *p;
-                } else {
-                    #ifdef DEBUG                
-                    printf("s %d %s\n",t,p->str());
-                    #endif
-
-                    outbounds[ci].push_back(*p);
-                }
-            }
-            cell->resize(cur);
-        }
+        thread(cell_update, N_CELL);
         
-        // particle migration
-        for (int hci = 0; hci < N_CELL; hci++) {
-            hc = &cells[hci];
-            cubic_idx(cci, hci);
-            i = cci[0];
-            j = cci[1];
-            k = cci[2];
-
-            for (int di = -1; di <= 1; di++) {
-                for (int dj = -1; dj <= 1; dj++) {
-                    for (int dk = -1; dk <= 1; dk++) {
-                        nci = linear_idx(i+di, j+dj, k+dk);
-                        if (hci == 72)
-                            printf("break\n");
-                        outbound = &outbounds[nci];
-                        
-                        int pi;
-                        particle *p;
-                        int np = outbound->size();
-                        for (pi = 0; pi < np; pi++) {
-                            p = &(*outbound)[pi];
-                            if (p->cell == hci) {
-                                hc->push_back(*p);
-                                
-                                #ifdef DEBUG
-                                printf("r %d %s\n",t,p->str());
-                                #endif
-                            }
-                        }
-                    }
-                }
-            }
-        }
-	
         // save results
         if (t % RESOLUTION == 0) {
             save(cells, fd);
@@ -200,4 +100,108 @@ int main(int argc, char **argv) {
     }
 
     close(fd);
+}
+
+void velocity_update(int hci, int tid) {
+    int i,j,k;
+    vector<particle> *hc, *nc;
+    int cci[3];
+    int nci;
+    float r, f;
+    vec v;
+
+    hc = &cells[hci];
+
+    cubic_idx(cci, hci);
+    i = cci[0];
+    j = cci[1];
+    k = cci[2];
+
+    for (int di = -1; di <= 1; di++) {
+        for (int dj = -1; dj <= 1; dj++) {
+            for (int dk = -1; dk <= 1; dk++) {
+
+				nci = linear_idx(i+di, j+dj, k+dk);
+                nc = &cells[nci];
+                
+                particle *pr, *pn;
+                int ri, ni;
+                int nr = hc->size(), nn = nc->size(); 
+                for (ri = 0; ri < nr; ri++) {
+                    pr = &(*hc)[ri];
+                    for (ni = 0; ni < nn; ni++) {
+                        pn = &(*nc)[ni];
+						
+						if (pr->interact(pn)) {
+							#ifdef DEBUG
+                        	dprintf(fds[tid], "%d %d %d\n", t, pr->id, pn->id);
+							#endif
+						}
+
+						
+						#ifdef DEBUG
+                        if (pr->id == BR && pn->id == BN) {
+                            printf("%d %d\n");
+                        }
+						#endif
+                    }
+                }
+            }
+        }
+    }
+}
+
+void position_update(int ci, int tid) {
+    int cur, np, hci, pi;
+    particle *p;
+    vector<particle> *cell;
+
+    outbounds[ci].resize(0);
+    cell = &cells[ci];
+    cur = 0;
+    np = cell->size();
+    for (pi = 0; pi < np; pi++) {
+        p = &(*cell)[pi];
+		p->update_position();
+
+        hci = p->cell;
+        if (hci == ci) {
+            (*cell)[cur++] = *p;
+        } else {
+            outbounds[ci].push_back(*p);
+        }
+    }
+    cell->resize(cur);
+}
+
+void cell_update(int hci, int tid) {
+    vector<particle> *hc, *outbound;
+    int i, j, k;
+    int nci;
+    int cci[3];
+
+    hc = &cells[hci];
+    cubic_idx(cci, hci);
+    i = cci[0];
+    j = cci[1];
+    k = cci[2];
+
+    for (int di = -1; di <= 1; di++) {
+        for (int dj = -1; dj <= 1; dj++) {
+            for (int dk = -1; dk <= 1; dk++) {
+                nci = linear_idx(i+di, j+dj, k+dk);
+                outbound = &outbounds[nci];
+                
+                int pi;
+                particle *p;
+                int np = outbound->size();
+                for (pi = 0; pi < np; pi++) {
+                    p = &(*outbound)[pi];
+                    if (p->cell == hci) {
+                        hc->push_back(*p);
+                    }
+                }
+            }
+        }
+    }
 }
