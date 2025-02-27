@@ -105,6 +105,35 @@ private:
 
 }; 
 
+template <typename T>
+class vector {
+public:
+	vector() : i(0), n(10) {
+		array = aligned_alloc(sizeof(T), sizeof(T) * size);
+	}
+
+	void push_back(T x) {
+		if (i == size) {
+			T *tmp = aligned_alloc(sizeof(T), 2 * sizeof(T) * size);
+			memcpy(tmp,array, sizeof(T) * size);
+			free(array);
+			array = tmp;
+		}
+
+		array[i++] = x;
+	}
+
+	int size() {
+		return n;
+	}
+
+private:
+	int i;
+	int n;
+	T *array;
+}
+
+
 class timer {
 public:
     timer();

@@ -2,17 +2,15 @@ import time
 import os
 
 bins = [
-    "cells-thread",
-    "hemisphere-thread",
-    "list-thread",
-    "hemilist-thread",
+    "cells",
+    "lists",
 ]
 
-for N in range(3,24):
+for t in range(1,16):
     fp = open("benchmark.out","a")
-    print(N, end=' ', file=fp)
+    print(t, end=' ', file=fp)
     
-    argv = f"--timesteps 17 --universe-size {N}"
+    argv = f"--timesteps 17 --threads {t} --universe-size 20"
     for f in bins:
         start = time.time()
         os.system(f"./{f} {argv}")

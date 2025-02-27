@@ -1,19 +1,18 @@
 #include <vector>
 #include <stdio.h>
 
+typedef float fvec __attribute__((vector_size(32)));
+
 using namespace std;
 
 int main() {
-    vector<vector<int>> a;
+	fvec v = {1,2,3,4,5,6,7,8};
 
-    vector<int> *b;
+	vector<fvec> a;
 
-    a.resize(16);
+	a.push_back(v);
 
-
-    b = &a[5];
-
-    b->push_back(5);
-
-    printf("%d\n",(*b)[0]);
+	printf("%p\n",&a[0]);
+	printf("%d\n",((long)&a[0])%32);
+	printf("%d\n",sizeof(fvec));
 }

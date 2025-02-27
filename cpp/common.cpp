@@ -21,7 +21,7 @@ float SIGMA = 1;
 float EPSILON = 1;
 float CUTOFF = 2.5;
 float M = 1;
-float DT = 1e-15;
+float DT = 1e-4;
 
 // length of a cell. Is CUTOFF if ALGO_CELLS and 1.2*CUTOFF if ALGO_LISTS
 float R;
@@ -75,7 +75,7 @@ vec &vec::operator+=(const vec &other) {
     z += other.z;
 
     return *this;
-}
+
 
 vec &vec::operator=(const vec& other) {
     x = other.x;
@@ -402,6 +402,50 @@ void init_particles(vector<particle> &particles) {
     for (int i = 0; i < N_PARTICLE; i++) {
         particles.push_back(particle(vec(L*frand(),L*frand(),L*frand())));
     }
+}
+
+void clipv(fvec *dst, fvec *v, float m) {
+	__m256 min = _mm256_set1_ps(m);
+	__m256 a = _mm256_load_ps(v);
+	__m256 mask = _mm256_cmp_ps(a, min, _CMP_GT_OQ);
+
+	a = _mm256_blendv_ps(a, min, mask);
+	_mm256_store_ps(dst, a);
+}
+
+void submv(fvec *dst, fvec *va, fvec *vb) {
+	__m256 a, b;
+	
+	a = _mm256_load_ps(va);
+	b = _mm256_load_ps(vb);
+
+	__m256 opts[3], aopts[3];
+	__m256 lv = _mm256_set1_ps(L);
+	opts[0] = _mm256_sub_ps(a,b);
+	opts[1] = _mm256_sub_ps(opts[0],L);
+	opts[1] = _mm256_add_ps(opts[0],L);
+
+	aopts[0] = _mm256_abs_ps(opts[0]);
+	aopts[1] = _mm256_abs_ps(opts[1]);
+	aopts[2] = _mm256_abs_ps(opts[2]);
+
+	__m256 m01, m12, m20;
+	__m256 m0, m1, m2;
+	m01 = _mm256_cmp_ps(aopts[0], aopts[1], _CMP_LT_OQ);
+	m12 = _mm256_cmp_ps(aopts[1], aopts[2], _CMP_LT_OQ);
+	m20 = _mm256_cmp_ps(aopts[2], aopts[0], _CMP_LT_OQ);
+	
+	m0 = _mm256_and_ps(m01, m12);
+	m1 = _mm256_and_ps(m12, m20);
+	m2 = _mm256_and_ps(m20, m01);
+	
+	
+	__m256 res;
+	res = _mm256_blendv_ps(opts[0], res, m0);
+	res = _mm256_blendv_ps(opts[1], res, m1);
+	res = _mm256_blendv_ps(opts[2], res, m2);
+
+	_mm256_store_ps(dst, res);
 }
 
 void save(vector<vector<particle>> &cells, int fd) {
