@@ -8,40 +8,6 @@
 
 using namespace std;
 
-// Constants for liquid argon
-/*
-float SIGMA = 0.34;
-float EPSILON = 120;
-float CUTOFF = .85;
-float M = 39.984 * 1e-3 / (6.022e23);
-float DT = 1e-15;
-*/
-// Uhh
-float SIGMA = 1;
-float EPSILON = 1;
-float CUTOFF = 2.5;
-float M = 1;
-float DT = 1e-4;
-
-// length of a cell. Is CUTOFF if ALGO_CELLS and 1.2*CUTOFF if ALGO_LISTS
-float R;
-
-
-int UNIVERSE_SIZE = 5;
-int N_PARTICLE = -1;
-int N_TIMESTEP = 10;
-int SEED = 0;
-int RESOLUTION = 10;
-int NEIGHBOR_REFRESH_RATE = 18;
-int BR = -1;
-int BN = -1;
-int THREADS = 128;
-int SAVE = 0;
-mdalgo_t ALGO = ALGO_NONE;
-
-float LJ_MIN; // minimum lj. Arbitrarily 4x the magnitude of the potential well
-float CSQ; // cutoff squared
-
 vec::vec(float x, float y, float z) : x(x), y(y), z(z) {};
 vec::vec() : x(0), y(0), z(0) {};
 
@@ -57,7 +23,7 @@ vec &vec::operator*=(const float c) {
     x *= c;
     y *= c;
     z *= c;
-    
+   
     return *this;
 }
 
@@ -327,75 +293,6 @@ void thread(void (*kernel)(int, int), int n) {
     }
 }
 
-int parse_cli(int argc, char **argv) {    
-    if (ALGO == ALGO_NONE) {
-		printf("Must set ALGO before calling parse_cli");
-		return 1;
-	}
-
-	for (char **arg = &argv[1]; arg < &argv[argc]; arg+=2) {
-        if (!strcmp(arg[0],"--sigma")) {
-            SIGMA = atof(arg[1]);
-        } else if (!strcmp(arg[0],"--epsilon")) {
-            EPSILON = atof(arg[1]);
-        } else if (!strcmp(arg[0],"--cutoff")) {
-            CUTOFF = atof(arg[1]);
-        } else if (!strcmp(arg[0],"--universe-size")) {
-            UNIVERSE_SIZE = atol(arg[1]);
-        } else if (!strcmp(arg[0],"--particles")) {
-            N_PARTICLE = atoi(arg[1]);
-        } else if (!strcmp(arg[0],"--timesteps")) {
-            N_TIMESTEP = atoi(arg[1]);
-        } else if (!strcmp(arg[0],"--dt")) {
-            DT = atof(arg[1]);
-        } else if (!strcmp(arg[0],"--seed")) {
-            SEED = atoi(arg[1]);
-        } else if (!strcmp(arg[0],"--resolution")) {
-            RESOLUTION = atoi(arg[1]);
-        } else if (!strcmp(arg[0],"--br")) {
-            BR = atoi(arg[1]);
-        } else if (!strcmp(arg[0],"--bn")) {
-            BN = atoi(arg[1]);
-        } else if (!strcmp(arg[0],"--threads")) {
-            THREADS = atoi(arg[1]);
-        } else if (!strcmp(arg[0],"--log-path")) {
-            LOG_PATH = arg[1];
-		} else if (!strcmp(arg[0],"--save")) {
-			SAVE = 1;
-			arg--;
-        } else {
-            dprintf(2,"Unrecognized option: %s\n", arg[0]);
-            return 1;
-        }
-    }
-
-	LJ_MIN = -4*LJ(R_MAX);
-
-    if (THREADS > sysconf(_SC_NPROCESSORS_ONLN)) {
-        THREADS = sysconf(_SC_NPROCESSORS_ONLN);
-    }
-
-	if (ALGO == ALGO_LISTS) {
-		R = 1.2 * CUTOFF;
-	} else {
-		R = CUTOFF;
-	}
-
-	CSQ = CUTOFF * CUTOFF;
-
-	if (N_PARTICLE == -1) {
-		if (ALGO == ALGO_CELLS) {
-			N_PARTICLE = 80 * N_CELL;
-		}
-		if (ALGO == ALGO_LISTS) {
-			N_PARTICLE = 138 * N_CELL;
-		}
-	}
-
-	printf("ALGO: %d, THREADS: %d, N_PARTICLE %d, N_CELL: %d\n", ALGO, THREADS, N_PARTICLE, N_CELL);
-
-    return 0;
-}
 
 void init_particles(vector<particle> &particles) {
     srandom(SEED);
@@ -404,7 +301,42 @@ void init_particles(vector<particle> &particles) {
     }
 }
 
-void clipv(fvec *dst, fvec *v, float m) {
+ivec simulation::cellv(fvec x, fvec y, fvec z) {
+	ivec i, j, k;
+	i = (ivec) (x / CUTOFF);
+	j = (ivec) (j / CUTOFF);
+	k = (ivec) (k / CUTOFF);
+	return i + j * UNIVERSE_SIZE + k * UNIVERSE_SIZE * UNIVERSE_SIZE;
+}
+
+fvec simulation::ljv(fvec r) {
+	const float ep4 = 4 * EPSILON;
+	const float spss = 6 * powf(SIGMA,6);
+	const float tpst = 12 * powf(SIGMA,12);
+	const float one = 1;
+
+	fvec r = sqrtv(r); 
+
+	r = one / r;
+	
+	fvec r8 = 1, r14 = 1;
+	for (int i = 0; i < 8; i++)
+		r8 *= r;
+	for (int i = 0; i < 14; i++)
+		r14 *= r;
+	
+	return clipv(ep4 * (spss * r8 + tpst * r14), LJ_MIN);
+}
+
+void sqrtv(fvec *dst, fvec *a) {
+	__mm256 a;
+
+	a = _mm256_load_ps(va);
+	a = _mm256_sqrt_ps(a);
+	_mm256_store_ps(dst,a);
+}
+
+fvec clipv(fvec v, float m) {
 	__m256 min = _mm256_set1_ps(m);
 	__m256 a = _mm256_load_ps(v);
 	__m256 mask = _mm256_cmp_ps(a, min, _CMP_GT_OQ);
@@ -413,7 +345,7 @@ void clipv(fvec *dst, fvec *v, float m) {
 	_mm256_store_ps(dst, a);
 }
 
-void submv(fvec *dst, fvec *va, fvec *vb) {
+void simulation::submv(fvec *dst, fvec *va, fvec *vb) {
 	__m256 a, b;
 	
 	a = _mm256_load_ps(va);
@@ -499,3 +431,15 @@ unsigned long rdtsc() {
   );
   return p.int64;
 }
+
+void permute(fvec *x, int n) {
+	pack tmp, *dst;
+	tmp.v = *x;
+	dst = (pack*) x;
+	for (int i = 0; i < VISZE; i++) {
+		dst->d[(i+n)%VSIZE] = tmp.d[i];
+	}
+}
+
+
+
