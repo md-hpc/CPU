@@ -5,7 +5,8 @@ common := $(ROOT_DIR)/common.cpp $(ROOT_DIR)/common.h
 bin = reference cells lists #hemilist-thread hemisphere-thread cells-thread list-thread
 
 
-all: stamp-all build
+all:
+	g++ -O3 -march=native -lm common.cpp fvv.cpp workers.cpp md.cpp 
 
 debug: gxx += -g -DDEBUG 
 debug: stamp-debug build

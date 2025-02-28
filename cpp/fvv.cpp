@@ -6,10 +6,24 @@ vec fvec_vector_vec::get(int i) {
 	);
 }
 
-void fvec_vector_vec::set(vec v, int i) {
+void fvec_vector_vec::set(const vec &v, int i) {
 	VAI(x,i) = v.x;
 	VAI(y,i) = v.y;
 	VAI(z,i) = v.z;
+}
+
+vec8 fvec_vector_vec::get8(int i) {
+	return vec8(
+		x[i],
+		y[i],
+		z[i]
+	);
+}
+
+void fvec_vector_vec::set8(const vec8 &v, int i) {
+	x[i] = v.x;
+	y[i] = v.y;
+	z[i] = v.z;
 }
 
 void fvec_vector_vec::append(vec v) {

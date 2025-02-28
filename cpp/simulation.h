@@ -1,26 +1,53 @@
+#ifndef I_SIMULATION
+#define I_SIMULATION
+
+#include <vector>
+#include "avx.h"
+#include "fvv.h"
+#include "common.h"
+
+using namespace std;
+
+class voxel {
+public:
+	voxel(int i, int j, int k);
+
+	int i;
+	int j;
+	int k;
+};
+
+typedef struct {
+	void (*worker)(int);
+	int core;
+	int start;
+	int stop;
+} worker_spec_t;
+
 class simulation {
 public:
-	int parse_cli(int argc, char **argv);
+	simulation(int argc, char **argv);
 
-	fvec ljv(fvec r);
+	void simulate();
+
+	fvec ljv(fvec x, fvec y, fvec z);
 	fvec submv(fvec va, fvec vb);
-	fvec cellv(fvec x, fvec y, fvec z);
+	ivec cellv(fvec x, fvec y, fvec z);
 	fvec apbcfv(fvec x);
 	
-	void velocity_update_worker(int hci, int tid);
-	void position_update_worker(int hci, int tid);
-	void cell_update_worker(int hci, int tid);
-
-	int voxelof(int i, int j, int k);
-
+	void velocity_update_worker(int hci);
+	void position_update_worker(int hci);
+	void cell_update_worker(int hci);
+	
+	voxel voxelof(int i);
+	int cell(int i, int j, int k);
+	
 	void *run_worker(void *arg);
 	void thread(void (*worker)(void*), int threads);
 
-	vector<fvec_vector_vec> r;
-	vector<fvec_vector_vec> v;
-	vector<vector<vec>> vos;
-	vector<vector<vec>> ros;
-	vector<vector<int>> ocis;
+	vector<vector<particle8>> cells;
+	vector<vector<particle>> outbounds;
+	vector<vector<int>> cios;
 
 	float SIGMA;
 	float EPSILON;
@@ -31,25 +58,27 @@ public:
 
 	float LJ_MIN;
 	float L;
-	int N_CELL;
+	int CELLS;
 
 	int TIMESTEPS;
 	int SEED;
 	int RESOLUTION;
 	int THREADS;
+
+	int LOGFD;
+	int FD;
+
+	int t;
+
+	char default_log[32] = "validate/cells-vec";
+	char default_path[32] = "viz/particles";
+
+	// "constants" for LJ computation
+	float EP4;
+	float SPSS;
+	float TPST;
+
 };
 
-class voxel {
-	voxel(int i, int j, int k);
 
-	int i;
-	int j;
-	int k;
-}
-
-typedef struct {
-	void (*worker)(int);
-	int core;
-	int start;
-	int stop;
-} worker_spec_t;
+#endif

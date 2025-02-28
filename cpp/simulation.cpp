@@ -1,4 +1,4 @@
-fvec simulation::apbcfv(fvec vx) {
+f8 simulation::apbcfv(f8 vx) {
 	__m256 x, mlt, mgt, z, l, xu, xl;
 	const float l = L;
 
@@ -15,40 +15,60 @@ fvec simulation::apbcfv(fvec vx) {
 	x = _mm256_blendv_ps(xu, x, mlt);
 	x = _mm256_blendv_ps(xl, x, mgt);
 
-	return (fvec) x;
+	return (f8) x;
 }
 
-ivec simulation::cellv(fvec x, fvec y, fvec z) {
-	ivec i, j, k;
+i8 simulation::cellv(vec8 r) {
+	i8 i, j, k;
 	const int u = UNIVERSE_SIZE;
 
-	i = (ivec) (x / CUTOFF);
-	j = (ivec) (j / CUTOFF);
-	k = (ivec) (k / CUTOFF);
+	i = (i8) (r.x / CUTOFF);
+	j = (i8) (r.y / CUTOFF);
+	k = (i8) (r.z / CUTOFF);
 	return i + j * u + k * u * u;
 }
 
-fvec simulation::ljv(fvec r) {
-	const float ep4 = 4 * EPSILON;
-	const float spss = 6 * powf(SIGMA,6);
-	const float tpst = 12 * powf(SIGMA,12);
-	const float one = 1;
+int simulation::cell(vec v) {
+	const int u = UNIVERSE_SIZE;
+	const int c = CUTOFF;
+	int i, j, k;
 
-	fvec r = sqrtv(r); 
+	i = (int) (v.x / c);
+	j = (int) (v.y / c);
+	k = (int) (v.z / c);
+	return i + j * u + k * u * u;
+}
+
+vec8 simulation::lj(const vec8 &rp, const vec8 &np) {
+	const float ep4 = EP4;
+	const float spss = SPSS;
+	const float tpst = TPST;
+	const float one = 1;
+	const float dt = DT;
+	
+	f8 r = submv(rp, np);
+	r = sqrtv(r.x * r.x + r.y * r.y + r.z * r.z); 
 
 	r = one / r;
 	
-	fvec r8 = 1, r14 = 1;
+	f8 r8 = one, r14 = one;
 	for (int i = 0; i < 8; i++)
 		r8 *= r;
 	for (int i = 0; i < 14; i++)
 		r14 *= r;
 	
-	return clipv(ep4 * (spss * r8 + tpst * r14), LJ_MIN);
+	return rp * (dt * clipv(ep4 * (spss * r8 + tpst * r14), LJ_MIN));
 }
 
+vec8 simulation::submv(const vec8 &va, const vec8 &vb) {
+	return vec8(
+		submv(va.x,vb.x),
+		submv(va.y,vb.y),
+		submv(va.z,vb.z)
+	);
+}	
 
-fvec simulation::submv(fvec va, fvec vb) {
+f8 simulation::submv(f8 va, f8 vb) {
 	__m256 a, b;
 	
 	a = _mm256_load_ps(va);
@@ -83,11 +103,21 @@ fvec simulation::submv(fvec va, fvec vb) {
 	_mm256_store_ps(dst, res);
 }
 
-int simulation::parse_cli(int argc, char **argv) {    
-    if (ALGO == ALGO_NONE) {
-		printf("Must set ALGO before calling parse_cli");
-		return 1;
-	}
+simulation::simulation(int argc, char **argv) {    
+	THREADS = sysconf(_SC_NPROCESSORS_ONLN);
+	SIGMA = 1;
+	EPSILON = 1;
+	CUTOFF = 2.5;
+	DT = 1e-4;
+	N_PARTICLE = -1;
+	UNIVERSE_SIZE = 5;
+	SEED = 0;
+	SAVE = 0;
+	TIMESTEPS = 20;
+	RESOLUTION = 100;
+
+	PATH = default_path;
+	LOG_PATH = default_log;
 
 	for (char **arg = &argv[1]; arg < &argv[argc]; arg+=2) {
         if (!strcmp(arg[0],"--sigma")) {
@@ -99,19 +129,15 @@ int simulation::parse_cli(int argc, char **argv) {
         } else if (!strcmp(arg[0],"--universe-size")) {
             UNIVERSE_SIZE = atol(arg[1]);
         } else if (!strcmp(arg[0],"--particles")) {
-            N_PARTICLE = atoi(arg[1]);
+            PARTICLES = atoi(arg[1]);
         } else if (!strcmp(arg[0],"--timesteps")) {
-            N_TIMESTEP = atoi(arg[1]);
+            TIMESTEPS = atoi(arg[1]);
         } else if (!strcmp(arg[0],"--dt")) {
             DT = atof(arg[1]);
         } else if (!strcmp(arg[0],"--seed")) {
             SEED = atoi(arg[1]);
         } else if (!strcmp(arg[0],"--resolution")) {
             RESOLUTION = atoi(arg[1]);
-        } else if (!strcmp(arg[0],"--br")) {
-            BR = atoi(arg[1]);
-        } else if (!strcmp(arg[0],"--bn")) {
-            BN = atoi(arg[1]);
         } else if (!strcmp(arg[0],"--threads")) {
             THREADS = atoi(arg[1]);
         } else if (!strcmp(arg[0],"--log-path")) {
@@ -126,31 +152,54 @@ int simulation::parse_cli(int argc, char **argv) {
     }
 
 	LJ_MIN = -4*LJ(R_MAX);
+	L = CUTOFF * UNIVERSE_SIZE;
+	CELLS = UNIVERSE_SIZE * UNIVERSE_SIZE * UNIVERSE_SIZE;
+	EP4 = 4 * EPSILON;
+	SPSS = 6 * powf(SIGMA,6);
+	TPST = 12 * powf(SIGMA,12);
+
+	FD = open(path, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+	LOGFD = open(path, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
 
     if (THREADS > sysconf(_SC_NPROCESSORS_ONLN)) {
         THREADS = sysconf(_SC_NPROCESSORS_ONLN);
     }
 
-	if (ALGO == ALGO_LISTS) {
-		R = 1.2 * CUTOFF;
-	} else {
-		R = CUTOFF;
+	if (PARTICLES == -1)
+		PARTICLES = 80 * UNIVERSE_SIZE * UNIVERSE_SIZE * UNIVERSE_SIZE;
+
+	srandom(SEED);
+
+	for (int i = 0; i < PARTICLES; i++) {
+		vec r = vec(L*frand(), L*frand(), L*frand());	
+		vec v = vec(0,0,0);
+		int hci = cell(r);
+		cells[hci].append(particle(r,v,hci));
 	}
+}
 
-	CSQ = CUTOFF * CUTOFF;
+void simulation::simulate() {
+	for (t = 0; t < TIMESTEPS; t++) {
+		printf("Timestep %d\n", t);
+		thread(velocity_update_worker, CELLS);
+		thread(position_update_worker, CELLS);
+		thread(cells_update_worker, CELLS);
 
-	if (N_PARTICLE == -1) {
-		if (ALGO == ALGO_CELLS) {
-			N_PARTICLE = 80 * N_CELL;
-		}
-		if (ALGO == ALGO_LISTS) {
-			N_PARTICLE = 138 * N_CELL;
+		if (SAVE && RESOLUTION % t == 0) {
+			save();
 		}
 	}
+}
 
-	printf("ALGO: %d, THREADS: %d, N_PARTICLE %d, N_CELL: %d\n", ALGO, THREADS, N_PARTICLE, N_CELL);
-
-    return 0;
+void simulation::save() {
+	int nc = particles.size();
+	for (int ci = 0; ci < nc; ci++) {
+		int np = particles[i].size();
+		for (int pi = 0; pi < np; pi++) {
+			vec r = particles[i].get(pi).r;
+			printf("%d %f %f %f\n", t, r.x, r.y, r.z);
+		}
+	}
 }
 
 void *simulation::run_worker(void *arg) {
