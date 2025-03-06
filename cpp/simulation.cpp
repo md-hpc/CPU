@@ -70,7 +70,7 @@ simulation::simulation(int argc, char **argv) {
     }
 
 	pthread_barrier_init(&barrier, NULL, THREADS);
-	pthread_barrier_init(&parent_barrier, NULL, THREADS);
+	pthread_barrier_init(&parent_barrier, NULL, THREADS+1);
 	tids = (pthread_t*) malloc(sizeof(pthread_t) * THREADS);
 	specs = (worker_spec_t*) malloc(sizeof(worker_spec_t) * THREADS);
 
