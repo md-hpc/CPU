@@ -1,31 +1,11 @@
 
-ROOT_DIR := /home/vraiti/mdhpc/cpu/cpp
-gxx := g++ -O3 -lm $(ROOT_DIR)/common.cpp -I$(ROOT_DIR)
-common := $(ROOT_DIR)/common.cpp $(ROOT_DIR)/common.h
-bin = reference cells lists #hemilist-thread hemisphere-thread cells-thread list-thread
-
+src = common.cpp particle.cpp particle8.cpp workers.cpp simulation.cpp simops.cpp avx.cpp
+gxx = g++ -march=native -lm -g
 
 all:
-	g++ -O3 -march=native -lm common.cpp fvv.cpp workers.cpp md.cpp 
+	$(gxx) -o sim -O3 md.cpp $(src)
+debug: 
+	$(gxx) -o sim -O0 md.cpp $(src)
+test:
+	$(gxx) -o tst test.cpp $(src)
 
-debug: gxx += -g -DDEBUG 
-debug: stamp-debug build
-
-stamp-debug:
-	-rm stamp-all $(bin)
-	touch stamp-debug
-stamp-all:
-	-rm stamp-debug $(bin)
-	touch stamp-all
-
-clean:
-	-rm $(bin) test
-
-build: $(bin)
-
-%: %.cpp $(common)
-	$(gxx) $@.cpp -o $@
-
-.PHONY: neighbor-filters
-neighbor-filters: 
-	$(MAKE) -C $@ 

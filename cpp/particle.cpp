@@ -2,9 +2,9 @@
 #include "particle.h"
 
 vec::vec() {
-	x = nan;
-	y = nan;
-	z = nan;
+	x = NAN;
+	y = NAN;
+	z = NAN;
 }
 
 vec::vec(float x, float y, float z) : x(x), y(y), z(z) {}

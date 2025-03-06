@@ -3,10 +3,23 @@
 
 #include <vector>
 #include "avx.h"
-#include "fvv.h"
+#include "particle8.h"
 #include "common.h"
 
 using namespace std;
+
+
+class simulation;
+
+typedef void (*worker_t)(simulation*,int);
+
+typedef struct {
+	worker_t worker;
+	int core;
+	int start;
+	int stop;
+	simulation *s;
+} worker_spec_t;
 
 class voxel {
 public:
@@ -17,35 +30,37 @@ public:
 	int k;
 };
 
-typedef struct {
-	void (*worker)(int);
-	int core;
-	int start;
-	int stop;
-} worker_spec_t;
-
 class simulation {
 public:
 	simulation(int argc, char **argv);
 
 	void simulate();
+	void save();
 
-	fvec ljv(fvec x, fvec y, fvec z);
-	fvec submv(fvec va, fvec vb);
-	ivec cellv(fvec x, fvec y, fvec z);
-	fvec apbcfv(fvec x);
-	
+	vec8 lj(const vec8 &r, const vec8 &n);
+	vec8 submv(const vec8 &va, const vec8 &vb);
+	f8 submv(f8 va, f8 vb);
+	i8 cellv(const vec8 &r);
+	void apbcfv(vec8 &r);
+	f8 apbcfv(f8 x);
+	int apbci(int i);
+
+	static void velocity_update(simulation *s, int hci);
+	static void position_update(simulation *s, int hci);
+	static void cell_update(simulation *s, int hci);
+
 	void velocity_update_worker(int hci);
 	void position_update_worker(int hci);
 	void cell_update_worker(int hci);
 	
 	voxel voxelof(int i);
 	int cell(int i, int j, int k);
-	
-	void *run_worker(void *arg);
-	void thread(void (*worker)(void*), int threads);
+	int cell(const vec &v);
 
-	vector<vector<particle8>> cells;
+	static void *run_worker(void *arg);
+	void thread(worker_t worker, int threads);
+
+	vector<particle8_vector> particles;
 	vector<vector<particle>> outbounds;
 	vector<vector<int>> cios;
 
@@ -62,11 +77,12 @@ public:
 
 	int TIMESTEPS;
 	int SEED;
-	int RESOLUTION;
 	int THREADS;
 
 	int LOGFD;
 	int FD;
+	int RESOLUTION;
+	int SAVE;
 
 	int t;
 
@@ -79,6 +95,5 @@ public:
 	float TPST;
 
 };
-
 
 #endif

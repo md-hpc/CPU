@@ -1,7 +1,8 @@
-#ifdef PARTICLE_H
+#ifndef PARTICLE_H
 #define PARTICLE_H
 
 class vec {
+public:
 	vec();
 	vec(float x, float y, float z);
 
@@ -11,8 +12,9 @@ class vec {
 };
 
 class particle {
+public:
 	particle();
-	partcile(vec r);
+	particle(vec r);
 	particle(vec r, vec v, int cell);
 
 	vec r;

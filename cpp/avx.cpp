@@ -1,26 +1,47 @@
 #include "avx.h"
+#include "particle8.h"
 
-fvec clipv(fvec v, float m) {
+f8 clipv(f8 v, float m) {
 	__m256 min = _mm256_set1_ps(m);
-	__m256 a = _mm256_load_ps(v);
+	__m256 a = (__m256) v;
 	__m256 mask = _mm256_cmp_ps(a, min, _CMP_GT_OQ);
 
 	a = _mm256_blendv_ps(a, min, mask);
-	_mm256_store_ps(dst, a);
+	return (f8) a;
 }
 
-void sqrtv(fvec *dst, fvec *a) {
-	__mm256 a;
-
-	a = _mm256_load_ps(va);
-	a = _mm256_sqrt_ps(a);
-	_mm256_store_ps(dst,a);
+f8 sqrtv(f8 va) {
+	return (f8) _mm256_sqrt_ps((__m256) va);
 }
 
-fvec permute(fvec x) {
-	pack p;
-	for (int i = 0; i < VISZE; i++) {
-		p.d[(i+1)%VSIZE] = x;
+f8 permute(f8 x) {
+	pack a;
+	pack b;
+
+	a.v = x;
+	for (int i = 0; i < VSIZE; i++) {
+		b.d[(i+1)%VSIZE] = a.d[i];
 	}
-	return p.v;
+	return b.v;
+}
+
+int alleq(i8 va, int sb) {
+	__m256i a, b, m;
+	int mask;
+
+	a = (__m256i) va;
+	b = _mm256_set1_epi32(sb);
+	m = _mm256_cmpeq_epi32(a,b);
+	
+	mask = _mm256_movemask_ps(_mm256_castsi256_ps(m));
+	return mask == 0xff;
+}
+
+__m256 _mm256_abs_ps(__m256 a) {
+	__m256 k = _mm256_set1_ps(-1);
+	__m256 z = _mm256_set1_ps(0);
+	__m256 n = _mm256_mul_ps(a,k);
+	__m256 m = _mm256_cmp_ps(a,z,_CMP_LT_OQ);
+	__m256 r = _mm256_blendv_ps(a,n,m);
+	return r;
 }

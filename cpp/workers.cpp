@@ -1,12 +1,14 @@
+#include <stdio.h>
+
 #include "simulation.h"
 #include "avx.h"
-#include "fvv.h"
+#include "particle8.h"
 #include "common.h"
 
 void simulation::velocity_update_worker(int hci) {
 	voxel hcv = voxelof(hci);
 	int nr = particles[hci].size();
-
+	
 	for (int di = -1; di <= 1; di++) {
 		for (int dj = -1; dj <= 1; dj++) {
 			for (int dk = -1; dk <= 1; dk++) {
@@ -30,17 +32,17 @@ void simulation::velocity_update_worker(int hci) {
 
 							particle8 np = particles[nci][ni];
 
-							vec8 v = ljv(rp.r, np.r);
+							vec8 v = lj(rp.r, np.r);
 							rp.v += v;
 
 							v *= -1;
 							particles[nci][ni].v += v;
 						}
 				
-						rp.r = permute(rp.r);
-						rp.v = permute(rp.v);
+						rp.r.permutev();
+						rp.v.permutev();
 					}
-					v[hci][ri].v = rp.v;
+					particles[hci][ri].v = rp.v;
 				}
 			}
 		}
@@ -54,8 +56,8 @@ void simulation::velocity_update_worker(int hci) {
 		np = particles[hci][i].r;
 
 		for (int p = 0; p < 7; p++) {
-			np = permute(np);
-			vec8 v = ljv(rp, np);
+			np.permutev();
+			vec8 v = lj(rp, np);
 			rv += v;
 		}
 		particles[hci][i].v = rv;
@@ -64,35 +66,42 @@ void simulation::velocity_update_worker(int hci) {
 
 void simulation::position_update_worker(int hci) {
 
-	int np = r[hci].size();
+	int np = particles[hci].size();
 	int cur = 0;
-	int ocur = 0;
+	const int hciv = hci;
 
 	outbounds[hci].resize(0);
+	p8buf buf;
 
 	for (int pi = 0; pi < np; pi++) {
-		particles[hci][pi] = apbcfv(
-			particles[hci][pi].r + particles[hci][pi].r * DT
-		);
+		particle8 p = particles[hci][pi];
+		p.r += (p.v * DT);
+		apbcfv(p.r);
 
-		ipack cells = { .v=cellv(r[hci].x[pi], r[hci].y[pi], r[hci].z[pi]) };
-
-		// I think this could be optimized if we tried to do as many aligned vector loads as possible when
-		// all of cells == hci
-		for (int i = pi * VSIZE; i < (pi + 1) * VSIZE; i++) {
-			if (cells.d[i%VSIZE] == hci) {
-				r[hci].set(r[hci].get(i),cur);
-				v[hci].set(v[hci].get(i),cur);
-				cur++;
-			} else {
-				ros[hci].push_back(r[hci].get(i));
-				vos[hci].push_back(v[hci].get(i));
-				cios[hci].push_back(cells.d[i%VSIZE]);
+		ipack cells = { .v=cellv(p.r) };
+		if (alleq(cells.v, hciv)) {
+			particles[hci][cur++] = p;
+		} else {
+			for (int i = 0; i < VSIZE; i++) {
+				if (cells.d[i] == hci) {
+					if (buf.append(p.get(i))) {
+						particles[hci][cur++] = buf.get();
+					}
+				} else {
+					particle op = p.get(i);
+					op.cell = cells.d[i];
+					outbounds[hci].push_back(op);
+				}
 			}
 		}
 	}
-	v[hci].resize(cur);
-	r[hci].resize(cur);
+	
+	int sz = cur * VSIZE;
+	if (buf.i > 0) {
+		sz += buf.i;
+		particles[hci][cur++] = buf.get();
+	}
+	particles[hci].resize(sz);
 }
 
 void simulation::cell_update_worker(int hci) {
@@ -101,12 +110,12 @@ void simulation::cell_update_worker(int hci) {
 	for (int di = -1; di <= 1; di++) {
 		for (int dj = -1; dj <= 1; dj++) {
 			for (int dk = -1; dk <= 1; dk++) {
-				int nci = cell(hcv.i + di, hcv.j + dj, hcv.k + dk);
-				int no = cios[nci].size();
+				int oci = cell(hcv.i + di, hcv.j + dj, hcv.k + dk);
+				int no = outbounds[oci].size();	
 				for (int oi = 0; oi < no; oi++) {
-					if (cios[nci][oi] == hci) {
-						r[hci].append(ros[nci][oi]);
-						v[hci].append(vos[nci][oi]);
+					particle op = outbounds[oci][oi];
+					if (op.cell == hci) {
+						particles[hci].append(op);
 					}
 				}
 			}

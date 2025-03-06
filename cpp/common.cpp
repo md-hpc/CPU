@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <limits.h>
+#include <stdlib.h>
 
 #include "common.h"
 
@@ -18,7 +19,6 @@ void timer::stop() {
 unsigned long timer::get() {
     return time;
 }
-
 
 float frand() {
 	return ((float) random()) / ((float) INT_MAX);
