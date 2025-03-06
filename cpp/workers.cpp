@@ -1,13 +1,39 @@
 #include <stdio.h>
+#include <math.h>
 
 #include "simulation.h"
 #include "avx.h"
 #include "particle8.h"
 #include "common.h"
 
+void simulation::do_work(worker_spec_t *spec) {
+	int start = spec->start;
+	int stop = spec->stop;
+
+	for (int t = 0; t < TIMESTEPS; t++) {
+		pthread_barrier_wait(&parent_barrier);
+		// let the parent do its thing
+		pthread_barrier_wait(&parent_barrier);
+	
+		for (int i = start; i < stop; i++) {
+			velocity_update_worker(i);
+		}
+		pthread_barrier_wait(&barrier);
+
+		for (int i = start; i < stop; i++) {
+			position_update_worker(i);
+		}
+		pthread_barrier_wait(&barrier);
+
+		for (int i = start; i < stop; i++) {
+			cell_update_worker(i);
+		}
+	}
+}
+
 void simulation::velocity_update_worker(int hci) {
 	voxel hcv = voxelof(hci);
-	int nr = particles[hci].size();
+	int nr = particles[hci].size8();
 	
 	for (int di = -1; di <= 1; di++) {
 		for (int dj = -1; dj <= 1; dj++) {
@@ -16,7 +42,7 @@ void simulation::velocity_update_worker(int hci) {
 					continue;
 
 				int nci = cell(hcv.i + di, hcv.j + dj, hcv.k + dk);				
-				int nn = particles[nci].size();
+				int nn = particles[nci].size8();
 				
 				for (int ri = 0; ri < nr; ri++) {
 					particle8 rp = particles[hci][ri];
@@ -67,7 +93,7 @@ void simulation::velocity_update_worker(int hci) {
 void simulation::position_update_worker(int hci) {
 	// hci === home cell index
 
-	int np = particles[hci].size();
+	int np = particles[hci].size8();
 	int cur = 0;
 	const int hciv = hci;
 
@@ -96,8 +122,14 @@ void simulation::position_update_worker(int hci) {
 						// if buffer is full, perform aligned store to the cell list
 						particles[hci][cur++] = buf.get();
 					}
-				} else {
+				} else if (cells.d[i] > -1) {
 					// append to outbound buffer
+					// 
+					// if this is a nonexistent particle (NAN) its cell will be a large negative number, so
+					// we filter out those with the conditional clause
+					
+					// TODO: if op.cell is in this thread's group, then just
+					// append it to that cell's list
 					particle op = p.get(i);
 					op.cell = cells.d[i];
 					outbounds[hci].push_back(op);

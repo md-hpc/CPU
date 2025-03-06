@@ -139,21 +139,28 @@ particle8 &particle8_vector::operator[](int i) {
 }
 
 void particle8_vector::resize(int sz) {
+	particle p; // NAN initalized
 	n = sz;
+	if (n % 8) {
+		for (int i = n; i < n + (8 - n % 8); i++) {
+			set(p,i);
+		}
+	}
+	v.resize(sz / 8 + (sz % 8 != 0));
 }
 
-int particle8_vector::size() {
+int particle8_vector::size1() {
 	return n;
 }
 
-int particle8_vector::real_size() {
-	return v.size() * VSIZE;
+int particle8_vector::size8() {
+	return v.size();
 }
 
 void printpv(vector<particle8_vector> &ps) {
 	int n = ps.size();
 	for (int i = 0; i < n; i++) {
-		int np = ps[i].real_size();
+		int np = ps[i].size1();
 		if (np == 0)
 			continue;
 		printf("\t%d {", i);
@@ -164,11 +171,3 @@ void printpv(vector<particle8_vector> &ps) {
 		printf("}\n");
 	}
 }
-
-int pcount(vector<particle8_vector> &ps) {
-	int np = 0;
-	int nc = ps.size();
-	for (int i = 0; i < nc; i++)
-		np += ps[i].size();
-	return np;
-}	

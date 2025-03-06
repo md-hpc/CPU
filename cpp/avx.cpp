@@ -45,3 +45,9 @@ __m256 _mm256_abs_ps(__m256 a) {
 	__m256 r = _mm256_blendv_ps(a,n,m);
 	return r;
 }
+
+f8 cln(f8 x, float c) {
+	__m256 m = _mm256_cmp_ps(x,x,_CMP_UNORD_Q);
+	__m256 k = _mm256_set1_ps(c);
+	return _mm256_blendv_ps(k,x,m);
+}

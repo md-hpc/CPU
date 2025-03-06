@@ -65,8 +65,9 @@ public:
 	particle get(int i); 
 
 	void resize(int sz);
-	int size();
-	int real_size();
+	int size1();
+	int size8(); 
+	
 	
 	particle8 &operator[](int i); 
 

@@ -1,4 +1,6 @@
 #include <math.h>
+#include <stdio.h>
+
 #include "particle.h"
 
 vec::vec() {
@@ -21,3 +23,10 @@ particle::particle(vec r) : r(r) {
 }
 
 particle::particle(vec r, vec v, int cell) : r(r), v(v), cell(cell) {}
+
+#ifdef DEBUG
+char *particle::str() {
+	sprintf(dbstr,"(%f %f %f, %.1e %.1e %.1e)", r.x, r.y, r.z, v.x, v.y, v.z);
+	return dbstr;
+}
+#endif

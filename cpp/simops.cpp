@@ -29,11 +29,13 @@ f8 simulation::apbcfv(f8 vx) {
 
 i8 simulation::cellv(const vec8 &r) {
 	i8 i, j, k;
-	const int u = UNIVERSE_SIZE;
+	const int u = UNIVERSE_SIZE;	
+	const float c = CUTOFF;
+	
+	i = (i8) _mm256_cvttps_epi32(r.x / c);
+	j = (i8) _mm256_cvttps_epi32(r.y / c);
+	k = (i8) _mm256_cvttps_epi32(r.z / c);
 
-	i = (i8) (r.x / CUTOFF);
-	j = (i8) (r.y / CUTOFF);
-	k = (i8) (r.z / CUTOFF);
 	return i + j * u + k * u * u;
 }
 

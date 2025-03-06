@@ -2,6 +2,8 @@
 #define I_SIMULATION
 
 #include <vector>
+#include <pthread.h>
+
 #include "avx.h"
 #include "particle8.h"
 #include "common.h"
@@ -45,10 +47,6 @@ public:
 	f8 apbcfv(f8 x);
 	int apbci(int i);
 
-	static void velocity_update(simulation *s, int hci);
-	static void position_update(simulation *s, int hci);
-	static void cell_update(simulation *s, int hci);
-
 	void velocity_update_worker(int hci);
 	void position_update_worker(int hci);
 	void cell_update_worker(int hci);
@@ -57,8 +55,11 @@ public:
 	int cell(int i, int j, int k);
 	int cell(const vec &v);
 
+
 	static void *run_worker(void *arg);
-	void thread(worker_t worker, int threads);
+	void do_work(worker_spec_t *spec);
+	void create_workers();
+	void join_workers();
 
 	vector<particle8_vector> particles;
 	vector<vector<particle>> outbounds;
@@ -94,6 +95,10 @@ public:
 	float SPSS;
 	float TPST;
 
+	pthread_t *tids;
+	pthread_barrier_t barrier;
+	pthread_barrier_t parent_barrier;
+	worker_spec_t *specs;
 };
 
 #endif

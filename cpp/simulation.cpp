@@ -69,6 +69,11 @@ simulation::simulation(int argc, char **argv) {
         THREADS = sysconf(_SC_NPROCESSORS_ONLN);
     }
 
+	pthread_barrier_init(&barrier, NULL, THREADS);
+	pthread_barrier_init(&parent_barrier, NULL, THREADS);
+	tids = (pthread_t*) malloc(sizeof(pthread_t) * THREADS);
+	specs = (worker_spec_t*) malloc(sizeof(worker_spec_t) * THREADS);
+
 	if (PARTICLES == -1)
 		PARTICLES = 80 * UNIVERSE_SIZE * UNIVERSE_SIZE * UNIVERSE_SIZE;
 
@@ -86,37 +91,26 @@ simulation::simulation(int argc, char **argv) {
 }
 
 void simulation::simulate() {
-	
-	for (t = 0; t < TIMESTEPS; t++) {
+	create_workers();
+	for (t = 0; t < TIMESTEPS; t++) {	
+		pthread_barrier_wait(&parent_barrier);
 		int np = 0;
-		for (int i = 0; i < particles.size(); i++) {
-			np += particles[i].size();
-		}
+		for (int i = 0; i < CELLS; i++)
+			np += particles[i].size1();
 
 		printf("Timestep %d, %d\n", t, np);
-		// printpv(particles);
-		printf("Velocity update\n");
-		thread(velocity_update, CELLS);
-		// printpv(particles);
-
-		printf("Position update\n");
-		thread(position_update, CELLS);
-		// printpv(particles);
-
-		printf("Cell update\n");
-		thread(cell_update, CELLS);
-		// printpv(particles);
-
 		if (SAVE && RESOLUTION % t == 0) {
 			save();
 		}
+		pthread_barrier_wait(&parent_barrier);
 	}
+	join_workers();
 }
 
 void simulation::save() {
 	int nc = particles.size();
 	for (int ci = 0; ci < nc; ci++) {
-		int np = particles[ci].size();
+		int np = particles[ci].size1();
 		for (int pi = 0; pi < np; pi++) {
 			vec r = particles[ci].get(pi).r;
 			printf("%d %f %f %f\n", t, r.x, r.y, r.z);
@@ -135,50 +129,34 @@ void *simulation::run_worker(void *arg) {
         perror("could not set affinity");
         return (void*) 1;
     }
-    
-    for (int i = spec->start; i < spec->stop; i++) {
-        spec->worker(spec->s, i);
-    }
-    
+	spec->s->do_work(spec);
+
     return (void*) 0;
 }
 
-void simulation::thread(worker_t worker, int n) {
-    pthread_t tids[THREADS];
-    worker_spec_t jobs[THREADS];
-    void *ret;
-    int t;
-    int bsize = (n + THREADS - 1) / THREADS;
+void simulation::create_workers() {
+	int t;
+    int bsize =  CELLS / THREADS + (CELLS % THREADS != 0);
     
     for (t = 0; t < THREADS; t++) {
-        jobs[t].core = t;
-        jobs[t].start = t * bsize;
-        jobs[t].stop = (t + 1) * bsize < n ? (t + 1) * bsize : n;
-        jobs[t].worker = worker;
-       	jobs[t].s = this;
+        specs[t].core = t;
+        specs[t].start = t * bsize;
+        specs[t].stop = (t + 1) * bsize < CELLS ? (t + 1) * bsize : CELLS;
+       	specs[t].s = this;
 
-        if (pthread_create(&tids[t], NULL, run_worker, &jobs[t])) {
+        if (pthread_create(&tids[t], NULL, run_worker, &specs[t])) {
 			perror("Could not start thread");
 			exit(1);
 		}
     }
+}
 
-    for (t = 0; t < THREADS; t++) {
+void simulation::join_workers() {
+    void *ret;
+	for (t = 0; t < THREADS; t++) {
         pthread_join(tids[t], &ret);
         if (ret) {
             exit(1);
         }
     }
-}
-
-void simulation::position_update(simulation *s, int hci) {
-	s->position_update_worker(hci);
-}
-
-void simulation::velocity_update(simulation *s, int hci) {
-	s->velocity_update_worker(hci);
-}
-
-void simulation::cell_update(simulation *s, int hci) {
-	s->cell_update_worker(hci);
 }

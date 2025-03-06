@@ -20,6 +20,12 @@ public:
 	vec r;
 	vec v;
 	int cell;
+
+#ifdef DEBUG
+	char *str();
+	char dbstr[64];
+#endif
+
 };
 
 #endif
