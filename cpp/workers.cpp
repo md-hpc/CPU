@@ -65,29 +65,39 @@ void simulation::velocity_update_worker(int hci) {
 }
 
 void simulation::position_update_worker(int hci) {
+	// hci === home cell index
 
 	int np = particles[hci].size();
 	int cur = 0;
 	const int hciv = hci;
 
+	// buffer for particles that have left this cell
 	outbounds[hci].resize(0);
+
+	// consolidation buffer
 	p8buf buf;
 
 	for (int pi = 0; pi < np; pi++) {
 		particle8 p = particles[hci][pi];
 		p.r += (p.v * DT);
-		apbcfv(p.r);
+		apbcfv(p.r); // apply periodic boundary condition (floating-point, vector)
 
 		ipack cells = { .v=cellv(p.r) };
+
 		if (alleq(cells.v, hciv)) {
+			// if no particles have left this cell, perform aligned move
 			particles[hci][cur++] = p;
 		} else {
+			// we must pick particle-by-particle which need to be moved to the outbound buffer
 			for (int i = 0; i < VSIZE; i++) {
 				if (cells.d[i] == hci) {
+					// append to consolidation buffer
 					if (buf.append(p.get(i))) {
+						// if buffer is full, perform aligned store to the cell list
 						particles[hci][cur++] = buf.get();
 					}
 				} else {
+					// append to outbound buffer
 					particle op = p.get(i);
 					op.cell = cells.d[i];
 					outbounds[hci].push_back(op);
@@ -96,8 +106,10 @@ void simulation::position_update_worker(int hci) {
 		}
 	}
 	
+
 	int sz = cur * VSIZE;
 	if (buf.i > 0) {
+		// flush remaining buffer to the cell list
 		sz += buf.i;
 		particles[hci][cur++] = buf.get();
 	}
@@ -105,6 +117,9 @@ void simulation::position_update_worker(int hci) {
 }
 
 void simulation::cell_update_worker(int hci) {
+	// hci == home cell index
+	//
+	// check all neighbor outbound buffers to see if they belong to this cell
 	voxel hcv = voxelof(hci);
 	
 	for (int di = -1; di <= 1; di++) {
