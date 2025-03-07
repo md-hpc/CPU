@@ -13,10 +13,7 @@ using namespace std;
 
 class simulation;
 
-typedef void (*worker_t)(simulation*,int);
-
 typedef struct {
-	worker_t worker;
 	int core;
 	int start;
 	int stop;
@@ -47,9 +44,9 @@ public:
 	f8 apbcfv(f8 x);
 	int apbci(int i);
 
-	void velocity_update_worker(int hci);
-	void position_update_worker(int hci);
-	void cell_update_worker(int hci);
+	void velocity_update_worker(int hci, worker_spec_t* spec);
+	void position_update_worker(int hci, worker_spec_t* spec);
+	void cell_update_worker(int hci, worker_spec_t* spec);
 	
 	voxel voxelof(int i);
 	int cell(int i, int j, int k);

@@ -77,8 +77,6 @@ private:
 	int n;
 };
 
-
-
 void printpv(vector<particle8_vector> &ps);
 int pcount(vector<particle8_vector> &ps);
 #endif

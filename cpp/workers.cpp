@@ -16,22 +16,22 @@ void simulation::do_work(worker_spec_t *spec) {
 		pthread_barrier_wait(&parent_barrier);
 	
 		for (int i = start; i < stop; i++) {
-			velocity_update_worker(i);
+			velocity_update_worker(i,spec);
 		}
 		pthread_barrier_wait(&barrier);
 
 		for (int i = start; i < stop; i++) {
-			position_update_worker(i);
+			position_update_worker(i,spec);
 		}
 		pthread_barrier_wait(&barrier);
 
 		for (int i = start; i < stop; i++) {
-			cell_update_worker(i);
+			cell_update_worker(i,spec);
 		}
 	}
 }
 
-void simulation::velocity_update_worker(int hci) {
+void simulation::velocity_update_worker(int hci, worker_spec_t* spec) {
 	voxel hcv = voxelof(hci);
 	int nr = particles[hci].size8();
 	
@@ -90,7 +90,7 @@ void simulation::velocity_update_worker(int hci) {
 	}
 }
 
-void simulation::position_update_worker(int hci) {
+void simulation::position_update_worker(int hci, worker_spec_t *spec) {
 	// hci === home cell index
 
 	int np = particles[hci].size8();
@@ -148,7 +148,7 @@ void simulation::position_update_worker(int hci) {
 	particles[hci].resize(sz);
 }
 
-void simulation::cell_update_worker(int hci) {
+void simulation::cell_update_worker(int hci, worker_spec_t *spec) {
 	// hci == home cell index
 	//
 	// check all neighbor outbound buffers to see if they belong to this cell
