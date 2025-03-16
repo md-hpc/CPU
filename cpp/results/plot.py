@@ -1,33 +1,20 @@
 import csvp
 import matplotlib.pyplot as plt
 
+for u in [3, 4, 5]:
+    x, y1 = csvp.parse(f"energy-t1-u{u}.csv",dtype=float,hdr=False)
+    x, y2 = csvp.parse(f"energy-t16-u{u}.csv",dtype=float,hdr=False)
+    y = (y2 / y1) - 1
 
-hdr, x, y = csvp.parse("benchmark.out"," ",float)
+    plt.scatter(
+        x,
+        y,
+        s = 4,
+        label=f"{u**3} cells"
+    )
 
-y /= 18
-y *= 1e6
-
-x = (x ** 3)[:,0]
-
-n = 80 * x
-
-plt.scatter(
-    n,
-    y[:,0] / n,
-    label="cell lists",
-)
-
-n = 138 * x
-plt.scatter(
-    n,
-    y[:,1] / n,
-    label="neighbor lists",
-)
-
-plt.title("Performance of various algorithms on CPU")
-plt.xlabel("Particles")
-plt.ylabel("uSeconds per Particle per Timestep")
+plt.title("Ostrich Algorithm 16 Threads % Error")
+plt.xlabel("timestep")
+plt.ylabel("% error")
 plt.legend()
-plt.xscale("log")
-
-plt.savefig("cpu")
+plt.savefig("ostrich")

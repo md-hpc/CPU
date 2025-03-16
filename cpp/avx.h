@@ -26,8 +26,8 @@ f8 permute(f8 x);
 int alleq(i8 a, int b);
 f8 clipv(f8 r, float c);
 f8 sqrtv(f8 r);
-f8 cln(f8 x);
-
+f8 n2c(f8 x, float c);
+float sum(f8 x);
 
 __m256 _mm256_abs_ps(__m256 a);
 

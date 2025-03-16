@@ -1,39 +1,115 @@
-#include <stdio.h>
-#include <math.h>
+#include <cstdio>
+#include <cmath>
+#include <set>
+#include <algorithm>
 
 #include "simulation.h"
-#include "avx.h"
-#include "particle8.h"
-#include "common.h"
 
 void simulation::do_work(worker_spec_t *spec) {
 	int start = spec->start;
 	int stop = spec->stop;
 
+	set<int> ns;
+
+	// initialize export_fbufs[spec->core]
+	for (int i = start; i < stop; i++) {
+		voxel hcv = voxelof(i);
+
+		for (int di = -1; di <= 1; di++) {
+			for (int dj = -1; dj <= 1; dj++) {
+				for (int dk = -1; dk <= 1; dk++) {
+					if (di < 0 || di == 0 && dj < 0 || di == 0 && dj == 0 && dk < 0)
+						continue;
+					int nci = cell(hcv.i + di, hcv.j + dj, hcv.k + dk);
+					if (nci < start || nci >= stop)
+						ns.insert(nci);
+				}
+			}
+		}
+	}
+
+
+	for (set<int>::iterator it = ns.begin(); it != ns.end(); ++it) {
+		export_fbufs[spec->core].emplace(*it, vector<vec8>());
+	}
+
+	pthread_barrier_wait(&barrier);
+	
+	ns.clear();
+	// initialize import_fbufs_cores[spec->core]
+	for (int core = 0; core < THREADS; core++) {
+		if (core == spec->core)
+			continue;
+
+		for (fbufd_t::iterator it = export_fbufs[core].begin(); it != export_fbufs[core].end(); ++it) {
+			int cell = it->first;
+			if (start <= cell && cell < stop) {
+				if (!import_fbuf_cores[spec->core].count(cell)) {
+					import_fbuf_cores[spec->core].emplace(cell, vector<int>());
+				}
+				import_fbuf_cores[spec->core][cell].push_back(core);
+				ns.insert(core);
+			}
+		}
+	}
+
+	for (set<int>::iterator it = ns.begin(); it != ns.end(); ++it) {
+		core_neighbors[spec->core].push_back(*it);	
+	}
+
+
 	for (int t = 0; t < TIMESTEPS; t++) {
 		pthread_barrier_wait(&parent_barrier);
-		// let the parent do its thing
+		// let the parent do its per-timestep processing
 		pthread_barrier_wait(&parent_barrier);
-	
+
+		// reset this core's shared memory objects
+		for (fbufd_t::iterator it = export_fbufs[spec->core].begin(); it != export_fbufs[spec->core].end(); ++it) {
+			f8 fz = VK(0);
+			vec8 z = vec8(fz, fz, fz);
+			vector<vec8> *fbuf = &export_fbufs[spec->core][it->first];
+			fbuf->resize(velocities[it->first].size8());
+			fill(fbuf->begin(), fbuf->end(), z);
+		}
+		outbound_particles[spec->core].resize(0);
+
 		for (int i = start; i < stop; i++) {
 			velocity_update_worker(i,spec);
 		}
 		pthread_barrier_wait(&barrier);
+		
+		#ifdef DEBUG
+		pthread_barrier_wait(&parent_barrier);
+		pthread_barrier_wait(&parent_barrier);
+		#endif
+
+		for (int i = start; i < stop; i++) {
+			reduce_fbufs_worker(i,spec);
+		}
+		pthread_barrier_wait(&barrier);
+
+		#ifdef DEBUG
+		pthread_barrier_wait(&parent_barrier);
+		pthread_barrier_wait(&parent_barrier);
+		#endif
 
 		for (int i = start; i < stop; i++) {
 			position_update_worker(i,spec);
 		}
 		pthread_barrier_wait(&barrier);
 
-		for (int i = start; i < stop; i++) {
-			cell_update_worker(i,spec);
-		}
+		#ifdef DEBUG
+		pthread_barrier_wait(&parent_barrier);
+		pthread_barrier_wait(&parent_barrier);
+		#endif
+
+		particle_migrate_worker(spec);
 	}
 }
 
 void simulation::velocity_update_worker(int hci, worker_spec_t* spec) {
 	voxel hcv = voxelof(hci);
-	int nr = particles[hci].size8();
+	int nr = positions[hci].size8();
 	
 	for (int di = -1; di <= 1; di++) {
 		for (int dj = -1; dj <= 1; dj++) {
@@ -42,33 +118,45 @@ void simulation::velocity_update_worker(int hci, worker_spec_t* spec) {
 					continue;
 
 				int nci = cell(hcv.i + di, hcv.j + dj, hcv.k + dk);				
-				int nn = particles[nci].size8();
+				int nn = positions[nci].size8();
 				
+				
+				vec8 *nrs, *nvs;
+				
+				nrs = &positions[nci][0];
+				
+				if (nci < spec->start || spec->stop <= nci) {
+					nvs = &export_fbufs[spec->core][nci][0];
+				} else {
+					nvs = &velocities[nci][0];
+				}
+
 				for (int ri = 0; ri < nr; ri++) {
-					particle8 rp = particles[hci][ri];
+					vec8 rr = positions[hci][ri];
+					vec8 rv = velocities[hci][ri];
 
 					for (int p = 0; p < VSIZE; p++) {
 						for (int ni = 0; ni < nn; ni++) {
 							// nci >= hci from conditional before
 							//
-							// ni > ri (&& nci == hci) should be omitted to leverag n3l
+							// ni > ri (&& nci == hci) should be omitted to leverage n3l
 							// ni == ri (&& nci == hci) requires special handling (no n3l)
 							if (nci == hci && ni >= ri) 
 								continue;
 
-							particle8 np = particles[nci][ni];
+							vec8 nr = nrs[ni];
 
-							vec8 v = lj(rp.r, np.r);
-							rp.v += v;
+							vec8 v = lj(rr, nr);
+							rv += v;
 
 							v *= -1;
-							particles[nci][ni].v += v;
+							nvs[ni] += v;
 						}
 				
-						rp.r.permutev();
-						rp.v.permutev();
+						rr.permutev();
+						rv.permutev();
 					}
-					particles[hci][ri].v = rp.v;
+					velocities[hci][ri] = rv;
 				}
 			}
 		}
@@ -77,62 +165,89 @@ void simulation::velocity_update_worker(int hci, worker_spec_t* spec) {
 	// handle ri == ni && hci == nci for this cell. Do not apply n3l
 	for (int i = 0; i < nr; i++) {
 		vec8 rp, np, rv, v;
-		rp = particles[hci][i].r;
-		rv = particles[hci][i].v;
-		np = particles[hci][i].r;
+		rp = positions[hci][i];
+		rv = velocities[hci][i];
+		np = positions[hci][i];
 
 		for (int p = 0; p < 7; p++) {
 			np.permutev();
-			vec8 v = lj(rp, np);
-			rv += v;
+			rv += lj(rp, np);
 		}
-		particles[hci][i].v = rv;
+		velocities[hci][i] = rv;
+	}
+}
+
+void simulation::reduce_fbufs_worker(int hci, worker_spec_t *spec) {
+	if (!import_fbuf_cores[spec->core].count(hci)) {
+		return;
+	}
+
+	int nc = import_fbuf_cores[spec->core][hci].size();
+	for (int i = 0; i < nc; i++) {
+		int core = import_fbuf_cores[spec->core][hci][i];
+
+		int nv = export_fbufs[core][hci].size();
+		for (int j = 0; j < nv; j++) {
+			velocities[hci][j] += export_fbufs[core][hci][j];
+		}
 	}
 }
 
 void simulation::position_update_worker(int hci, worker_spec_t *spec) {
 	// hci === home cell index
 
-	int np = particles[hci].size8();
+	int np = positions[hci].size8();
 	int cur = 0;
 	const int hciv = hci;
 
-	// buffer for particles that have left this cell
-	outbounds[hci].resize(0);
-
 	// consolidation buffer
-	p8buf buf;
+	v8buf vbuf, rbuf;
 
 	for (int pi = 0; pi < np; pi++) {
-		particle8 p = particles[hci][pi];
-		p.r += (p.v * DT);
-		apbcfv(p.r); // apply periodic boundary condition (floating-point, vector)
-
-		ipack cells = { .v=cellv(p.r) };
+		vec8 r, v;
+		r = positions[hci][pi];
+		v = velocities[hci][pi];
+		r += v * DT;
+		apbcfv(r); // apply periodic boundary condition (floating-point, vector)
+		
+		ipack cells = { .v=cellv(r) };
 
 		if (alleq(cells.v, hciv)) {
 			// if no particles have left this cell, perform aligned move
-			particles[hci][cur++] = p;
+			positions[hci][cur] = r;
+			velocities[hci][cur] = v;
+			cur++;
+
 		} else {
-			// we must pick particle-by-particle which need to be moved to the outbound buffer
+			// we must pick particle-by-particle who needs to be moved to the outbound buffer
 			for (int i = 0; i < VSIZE; i++) {
 				if (cells.d[i] == hci) {
 					// append to consolidation buffer
-					if (buf.append(p.get(i))) {
+					
+					if (rbuf.append(r.get(i)), vbuf.append(v.get(i))) {
 						// if buffer is full, perform aligned store to the cell list
-						particles[hci][cur++] = buf.get();
+						positions[hci][cur] = rbuf.get();
+						velocities[hci][cur] = vbuf.get();
+						cur++;
 					}
-				} else if (cells.d[i] > -1) {
+				} else if (spec->start <= cells.d[i] && cells.d[i] < spec->stop) {
+					// the particle has moved cells, but the cell is in our thread group, so 
+					// no need to worry about synchronization
+					positions[cells.d[i]].append(r.get(i));
+					velocities[cells.d[i]].append(v.get(i));
+
+				} else if (cells.d[i] >= 0) {
 					// append to outbound buffer
 					// 
 					// if this is a nonexistent particle (NAN) its cell will be a large negative number, so
 					// we filter out those with the conditional clause
-					
-					// TODO: if op.cell is in this thread's group, then just
-					// append it to that cell's list
-					particle op = p.get(i);
-					op.cell = cells.d[i];
-					outbounds[hci].push_back(op);
+			
+					particle p = particle(
+						r.get(i),
+						v.get(i),
+						cells.d[i]
+					);
+					outbound_particles[spec->core].push_back(p);
 				}
 			}
 		}
@@ -140,31 +255,26 @@ void simulation::position_update_worker(int hci, worker_spec_t *spec) {
 	
 
 	int sz = cur * VSIZE;
-	if (buf.i > 0) {
+	if (vbuf.i > 0) {
 		// flush remaining buffer to the cell list
-		sz += buf.i;
-		particles[hci][cur++] = buf.get();
+		sz += vbuf.i;
+		positions[hci][cur] = rbuf.get();
+		velocities[hci][cur] = vbuf.get();
 	}
-	particles[hci].resize(sz);
+	positions[hci].resize(sz);
+	velocities[hci].resize(sz);
 }
 
-void simulation::cell_update_worker(int hci, worker_spec_t *spec) {
-	// hci == home cell index
-	//
-	// check all neighbor outbound buffers to see if they belong to this cell
-	voxel hcv = voxelof(hci);
+void simulation::particle_migrate_worker(worker_spec_t *spec) {	
 	
-	for (int di = -1; di <= 1; di++) {
-		for (int dj = -1; dj <= 1; dj++) {
-			for (int dk = -1; dk <= 1; dk++) {
-				int oci = cell(hcv.i + di, hcv.j + dj, hcv.k + dk);
-				int no = outbounds[oci].size();	
-				for (int oi = 0; oi < no; oi++) {
-					particle op = outbounds[oci][oi];
-					if (op.cell == hci) {
-						particles[hci].append(op);
-					}
-				}
+	for (int i = 0; i < THREADS; i++) {
+		int np = outbound_particles[i].size();
+
+		for (int j = 0; j < np; j++) {
+			particle p = outbound_particles[i][j];
+			if (spec->start <= p.cell && p.cell < spec->stop) {
+				positions[p.cell].append(p.r);
+				velocities[p.cell].append(p.v);
 			}
 		}
 	}

@@ -1,5 +1,4 @@
 #include "avx.h"
-#include "particle8.h"
 
 f8 clipv(f8 v, float m) {
 	__m256 min = _mm256_set1_ps(m);
@@ -46,8 +45,16 @@ __m256 _mm256_abs_ps(__m256 a) {
 	return r;
 }
 
-f8 cln(f8 x, float c) {
+f8 n2c(f8 x, float c) {
 	__m256 m = _mm256_cmp_ps(x,x,_CMP_UNORD_Q);
 	__m256 k = _mm256_set1_ps(c);
-	return _mm256_blendv_ps(k,x,m);
+	return _mm256_blendv_ps(x,k,m);
+}
+
+float sum(f8 x) {
+	pack p = {.v = x};
+	float s = 0;
+	for (int i = 0; i < VSIZE; i++)
+		s += p.d[i];
+	return s;
 }

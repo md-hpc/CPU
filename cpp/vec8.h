@@ -3,8 +3,8 @@
 
 #include <vector>
 
-#include "avx.h"
 #include "particle.h"
+#include "avx.h"
 
 using namespace std;
 
@@ -34,49 +34,32 @@ public:
 	f8 z;
 };
 
-class particle8 {
+class v8buf {
 public:
-	particle8();
-	particle8(const vec8 &r);
-	particle8(const vec8 &r, const vec8 &v); 
+	v8buf();
+	int append(const vec &sv);
+	vec8 get();
 
-	particle get(int i);
-	void set(const particle &p, int i);
-
-	vec8 r;
+	int i;
 	vec8 v;
 };
 
-class p8buf {
+class vec8_vector {
 public:
-	p8buf();
-	int append(const particle &sp);
-	particle8 get();
+	void append(const vec &p);
 
-	int i;
-	particle8 p;
-};
-
-class particle8_vector {
-public:
-	void append(const particle &p);
-
-	void set(const particle &p, int i); 
-	particle get(int i); 
+	void set(const vec &v, int i); 
+	vec get(int i); 
 
 	void resize(int sz);
 	int size1();
 	int size8(); 
 	
-	
-	particle8 &operator[](int i); 
-
+	vec8 &operator[](int i); 
 
 private:
-	vector<particle8> v;
+	vector<vec8> arr;
 	int n;
 };
 
-void printpv(vector<particle8_vector> &ps);
-int pcount(vector<particle8_vector> &ps);
 #endif

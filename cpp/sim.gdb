@@ -1,5 +1,7 @@
 file sim
-break simulation.cpp:95 if t == 647
-r --particles 5 --timesteps 651
-break workers.cpp:71 if hci == 14 || hci == 13
+break workers.cpp:89 if spec->core == 0 
+break workers.cpp:165 if spec->core == 0
+break workers.cpp:185 if spec->core == 0
+break workers.cpp:250 if spec->core == 0
+r --particles 1
 c

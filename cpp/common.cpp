@@ -1,6 +1,6 @@
-#include <stdio.h>
-#include <limits.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <climits>
+#include <cstdlib>
 
 #include "common.h"
 

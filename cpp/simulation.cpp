@@ -1,19 +1,22 @@
-#include <pthread.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstdio>
+#include <cstring>
 #include <unistd.h>
 #include <fcntl.h>
+#include <pthread.h>
+#include <cmath>
 
 #include "simulation.h"
 #include "common.h"
 
+using namespace std;
+
 simulation::simulation(int argc, char **argv) {    
-	THREADS = 1; // sysconf(_SC_NPROCESSORS_ONLN);
+	THREADS = sysconf(_SC_NPROCESSORS_ONLN);
 	SIGMA = 1;
-	EPSILON = 1;
-	CUTOFF = 1;
-	DT = 1e-4;
+	EPSILON = 10;
+	CUTOFF = 2.5;
+	DT = 1e-7;
 	PARTICLES = -1;
 	UNIVERSE_SIZE = 3;
 	SEED = 0;
@@ -77,16 +80,21 @@ simulation::simulation(int argc, char **argv) {
 	if (PARTICLES == -1)
 		PARTICLES = 80 * UNIVERSE_SIZE * UNIVERSE_SIZE * UNIVERSE_SIZE;
 
-	particles.resize(CELLS);
-	outbounds.resize(CELLS);
-	cios.resize(CELLS);
+	positions.resize(CELLS);
+	velocities.resize(CELLS);
+
+	export_fbufs.resize(THREADS);
+	import_fbuf_cores.resize(THREADS);
+	outbound_particles.resize(THREADS);
+	core_neighbors.resize(THREADS);
 
 	srandom(SEED);
 	for (int i = 0; i < PARTICLES; i++) {
 		vec r = vec(L*frand(), L*frand(), L*frand());	
 		vec v = vec(0,0,0);
 		int hci = cell(r);
-		particles[hci].append(particle(r,v,hci));
+		positions[hci].append(r);
+		velocities[hci].append(v);
 	}
 }
 
@@ -94,25 +102,62 @@ void simulation::simulate() {
 	create_workers();
 	for (t = 0; t < TIMESTEPS; t++) {	
 		pthread_barrier_wait(&parent_barrier);
-		int np = 0;
-		for (int i = 0; i < CELLS; i++)
-			np += particles[i].size1();
+		
+		// after particle migration	
+		int m = positions[0].size1();
+		for (int i = 0; i < CELLS; i++) {
+			m = m < positions[i].size1() ? positions[i].size1() : m;
+		}
+		#ifdef DEBUG
+		printf("%d: (%d, %d)", t, pcount(), vcount()); 
+		#else
+		printf("timestep %d, %d, %d, %e\n",t,pcount(), m, ke());
+		#endif
 
-		printf("Timestep %d, %d\n", t, np);
 		if (SAVE && RESOLUTION % t == 0) {
 			save();
 		}
+
 		pthread_barrier_wait(&parent_barrier);
+
+		#ifdef DEBUG
+		pthread_barrier_wait(&parent_barrier);
+		
+		// after velocity update
+		printf(" (%d %d)", pcount(), vcount());
+		
+		pthread_barrier_wait(&parent_barrier);
+		#endif
+
+		#ifdef DEBUG
+		pthread_barrier_wait(&parent_barrier);
+		
+		// after fbuf import update
+		printf(" (%d %d)", pcount(), vcount());
+
+		pthread_barrier_wait(&parent_barrier);
+		#endif
+	
+		#ifdef DEBUG
+		pthread_barrier_wait(&parent_barrier);
+
+		// after position update
+		printf(" (%d %d)\n", pcount() + ocount(), vcount() + ocount());
+
+		pthread_barrier_wait(&parent_barrier);
+		#endif
+
+
 	}
 	join_workers();
 }
 
 void simulation::save() {
-	int nc = particles.size();
+	int nc = positions.size();
 	for (int ci = 0; ci < nc; ci++) {
-		int np = particles[ci].size1();
+		int np = positions[ci].size1();
 		for (int pi = 0; pi < np; pi++) {
-			vec r = particles[ci].get(pi).r;
+			vec r = positions[ci].get(pi);
 			printf("%d %f %f %f\n", t, r.x, r.y, r.z);
 		}	
 	}
@@ -159,4 +204,21 @@ void simulation::join_workers() {
             exit(1);
         }
     }
+}
+
+int ticket = 0;
+
+void simulation::printpv() {
+	for (int i = 0; i < CELLS; i++) {
+		int np = positions[i].size1();
+		if (np == 0)
+			continue;
+		printf("\t%d:",i);
+		for (int j = 0; j < positions[i].size1(); j++) {
+			vec r = positions[i].get(j);
+			vec v = velocities[i].get(j);
+			printf(" (%.1f %.1f %.1f, %.1f %.1f %.1f)", r.x, r.y, r.z, v.x, v.y, v.z);
+		}
+		printf("\n");
+	}
 }

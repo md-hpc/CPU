@@ -1,5 +1,6 @@
 
-src = common.cpp particle.cpp particle8.cpp workers.cpp simulation.cpp simops.cpp avx.cpp
+src = common.cpp particle.cpp vec8.cpp workers.cpp simulation.cpp simops.cpp avx.cpp
+
 gxx = g++ -march=native -lm -g
 
 all:

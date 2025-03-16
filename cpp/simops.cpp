@@ -1,7 +1,6 @@
 #include <math.h>
 
 #include "simulation.h"
-#include "avx.h"
 
 void simulation::apbcfv(vec8 &v) {
 	v.x = apbcfv(v.x);
@@ -48,7 +47,6 @@ int simulation::cell(const vec &v) {
 
 	return i + j * UNIVERSE_SIZE + k * UNIVERSE_SIZE * UNIVERSE_SIZE;
 }
-
 
 vec8 simulation::lj(const vec8 &rp, const vec8 &np) {
 	const float ep4 = EP4;
@@ -162,6 +160,45 @@ int simulation::cell(int i, int j, int k) {
 	k = apbci(k);
 
 	return i + u * j + u * u * k;
+}
+
+float simulation::ke() {
+	f8 e = VK(0);
+
+	for (int i = 0; i < CELLS; i++) {
+		int np = velocities[i].size8();
+		for (int j = 0; j < np; j++) {
+			vec8 v = velocities[i][j];
+			e += n2c(v.x * v.x + v.y * v.y + v.z * v.z, 0);
+		}
+	}
+
+	float E = 0;
+	float *fp = (float *) &e;
+	for (int i = 0; i < 8; i++)
+		E += fp[i];
+	return E / PARTICLES;
+}
+
+int simulation::pcount() {
+	int np = 0;
+	for (int i = 0; i < CELLS; i++)
+		np += positions[i].size1();
+	return np;
+}
+
+int simulation::vcount() {
+	int np = 0;
+	for (int i = 0; i < CELLS; i++)
+		np += velocities[i].size1();
+	return np;
+}
+
+int simulation::ocount() {
+	int np = 0;
+	for (int i = 0; i < THREADS; i++)
+		np += outbound_particles[i].size();
+	return np;
 }
 
 voxel::voxel(int i, int j, int k) : i(i), j(j), k(k) {}
