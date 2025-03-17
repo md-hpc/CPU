@@ -104,14 +104,14 @@ void simulation::simulate() {
 		pthread_barrier_wait(&parent_barrier);
 		
 		// after particle migration	
+		#ifdef DEBUG
 		int m = positions[0].size1();
 		for (int i = 0; i < CELLS; i++) {
 			m = m < positions[i].size1() ? positions[i].size1() : m;
 		}
-		#ifdef DEBUG
 		printf("%d: (%d, %d)", t, pcount(), vcount()); 
 		#else
-		printf("timestep %d, %d, %d, %e\n",t,pcount(), m, ke());
+		printf("%d\n", t);
 		#endif
 
 		if (SAVE && RESOLUTION % t == 0) {
