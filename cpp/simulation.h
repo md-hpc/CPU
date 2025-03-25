@@ -71,6 +71,7 @@ public:
 	void create_workers();
 	void join_workers();
 
+	vector<particle> particles; // positions and velocities are consolidated into this buffer at every neighbor refresh
 	vector<vec8_vector> positions;
 	vector<vec8_vector> velocities;	
 
@@ -78,9 +79,6 @@ public:
 	vector<fbufd_t> export_fbufs; // maps have one key for each cell in the core's import regions that maps to an array of vec8's where forces for those imported cells can be accumulated
 	vector<cored_t> import_fbuf_cores; // maps have one key for each of this core's cells that are imported by another core that maps to an array of ints declaring which cores import that cell.
 	
-	// {outbound_partices, core_neighbors}[core] is an array
-	vector<vector<particle>> outbound_particles; // particles that have left this core's cells and needs to be imported by another
-	vector<vector<int>> core_neighbors;	// all of the cores that neighbor this core. We'll check these outbound arrays for 
 
 	float SIGMA;
 	float EPSILON;
